@@ -2,6 +2,7 @@
 **/build/
 .build-cache/
 .local/
+.idea/
 .env
 *.log
 **/certs/

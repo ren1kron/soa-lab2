@@ -7,7 +7,7 @@ Two independent Java 17 services implementing the existing XML OpenAPI contracts
 | Organizations and employees | Spring MVC 6.2, Payara 6 | `https://localhost:26125` |
 | Organization manager | Jakarta REST 3.1, WildFly 35 / RESTEasy | `https://localhost:26126` |
 
-The client application and Helios deployment are deferred. The required route spelling is `/orgmanager/acquise/{acquirerId}/{acquiredId}`.
+The React + TypeScript + Vite client is in [`frontend/`](frontend/README.md), including local development and HTTPS startup instructions for Helios. Deployment on Helios requires the actual server addresses and account access. The required route spelling is `/orgmanager/acquise/{acquirerId}/{acquiredId}`.
 
 ## Run with Docker
 
