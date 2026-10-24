@@ -4,11 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import lombok.NoArgsConstructor;
-
 import java.io.*;
 import java.util.*;
 import javax.xml.stream.*;
+import lombok.NoArgsConstructor;
 
 @NoArgsConstructor
 public final class ManagerResponseWriter {

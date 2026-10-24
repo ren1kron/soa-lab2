@@ -205,11 +205,13 @@ components:
       additionalProperties: false
     Organization:
       type: object
+      description: Организация с текущим количеством назначенных ей сотрудников
       required:
         - id
         - name
         - coordinates
         - creationDate
+        - employeeCount
       xml:
         name: organization
       properties:
@@ -228,6 +230,13 @@ components:
           "$ref": "#/components/schemas/OrganizationType"
         officialAddress:
           "$ref": "#/components/schemas/Address"
+        employeeCount:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+          readOnly: true
+          description: Текущее количество сотрудников организации; 0, если сотрудников нет
       additionalProperties: false
     Headcount:
       type: object

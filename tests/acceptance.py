@@ -47,6 +47,7 @@ class Contracts(unittest.TestCase):
         id_ = root.findtext("id")
         self.organizations.append(id_)
         self.assertEqual("9223372036854775807", root.findtext("coordinates/x"))
+        self.assertEqual("0", root.findtext("employeeCount"))
         return id_
 
     def employee(self, name, organization=None):
@@ -81,6 +82,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual("organizations", page.tag)
         self.assertEqual("2", metadata["X-Total-Count"])
         self.assertEqual("1", metadata["X-Page-Size"])
+        self.assertEqual("0", page[0].findtext("employeeCount"))
         page, metadata = self.request("GET", "/organizations?page=999999999999999999999999")
         self.assertEqual(0, len(page))
         self.assertEqual("999999999999999999999999", metadata["X-Page"])
@@ -100,7 +102,14 @@ class Contracts(unittest.TestCase):
         acquired, _ = self.request("POST", f"/orgmanager/acquise/{a}/{b}", manager=True)
         self.assertEqual("acquisition", acquired.tag)
         self.assertEqual("2", acquired.findtext("employeeCount"))
+        self.assertEqual("2", acquired.findtext("organization/employeeCount"))
         self.assertEqual(a, acquired.findtext("organization/id"))
+        organizations, metadata = self.request("GET", "/organizations?" + urllib.parse.urlencode({
+            "filter": f"name:contains:{self.prefix},employeeCount:gte:1", "sort": "-employeeCount", "size": 1,
+        }))
+        self.assertEqual("1", metadata["X-Total-Count"])
+        self.assertEqual(a, organizations[0].findtext("id"))
+        self.assertEqual("2", organizations[0].findtext("employeeCount"))
         self.request("GET", "/organizations/" + b, expected=404)
         self.request("POST", f"/orgmanager/acquise/{a}/{b}", expected=404, manager=True)
         count, _ = self.request("GET", "/organizations/count?typeGreaterThan=PUBLIC")
@@ -135,6 +144,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual("0", metadata["X-Total-Count"])
         result, _ = self.request("POST", f"/orgmanager/acquise/{a}/{b}", manager=True)
         self.assertEqual("0", result.findtext("employeeCount"))
+        self.assertEqual("0", result.findtext("organization/employeeCount"))
         self.request("GET", "/organizations/" + b, expected=404)
 
     def test_validation_and_xml_errors(self):

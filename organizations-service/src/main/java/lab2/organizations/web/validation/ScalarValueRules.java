@@ -7,6 +7,7 @@ import java.util.List;
 public final class ScalarValueRules {
     public enum Kind {
         ID,
+        COUNT,
         LONG,
         INT,
         DOUBLE,
@@ -24,7 +25,7 @@ public final class ScalarValueRules {
     public static Object parse(Kind kind, String value) {
         try {
             return switch (kind) {
-                case ID, LONG, INT -> {
+                case ID, COUNT, LONG, INT -> {
                     if (!value.matches("[+-]?[0-9]+"))
                         throw new IllegalArgumentException(
                                 "INVALID_TYPE:Expected a decimal integer");
@@ -32,8 +33,12 @@ public final class ScalarValueRules {
                     var min =
                             kind == Kind.ID
                                     ? BigInteger.ONE
-                                    : BigInteger.valueOf(
-                                            kind == Kind.INT ? Integer.MIN_VALUE : Long.MIN_VALUE);
+                                    : kind == Kind.COUNT
+                                            ? BigInteger.ZERO
+                                            : BigInteger.valueOf(
+                                                    kind == Kind.INT
+                                                            ? Integer.MIN_VALUE
+                                                            : Long.MIN_VALUE);
                     var max =
                             BigInteger.valueOf(
                                     kind == Kind.INT ? Integer.MAX_VALUE : Long.MAX_VALUE);

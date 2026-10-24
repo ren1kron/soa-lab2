@@ -15,7 +15,8 @@ final class OrganizationRowMapper implements RowMapper<Organization> {
                                 row.getString("name"),
                                 new Coordinates(
                                         row.getLong("coordinates_x"), row.getInt("coordinates_y")),
-                                row.getObject("creation_date", LocalDate.class))
+                                row.getObject("creation_date", LocalDate.class),
+                                row.getLong("employee_count"))
                         .annualTurnover(row.getObject("annual_turnover", Double.class));
         String type = row.getString("type");
         if (type != null) organization.type(OrganizationType.fromValue(type));

@@ -12,7 +12,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 public final class JdbcOrganizationRepository implements OrganizationRepository {
     private static final String COLUMNS =
-            "id,name,coordinates_x,coordinates_y,creation_date,annual_turnover,type,address_zip_code,town_x,town_y,town_name";
+            "id,name,coordinates_x,coordinates_y,creation_date,annual_turnover,type,address_zip_code,town_x,town_y,town_name,"
+                    + "(SELECT COUNT(*) FROM employees WHERE organization_id=organizations.id) AS employee_count";
     private static final OrganizationRowMapper ROWS = new OrganizationRowMapper();
     private final JdbcTemplate jdbc;
 

@@ -19,12 +19,17 @@ public class InMemoryOrganizationsGateway implements OrganizationsGateway {
     }
 
     public static Organization org(long id) {
-        return new Organization(id, "org" + id, new Coordinates(1L, 2), LocalDate.of(2026, 10, 24));
+        return new Organization(
+                id, "org" + id, new Coordinates(1L, 2), LocalDate.of(2026, 10, 24), 0L);
     }
 
     public Organization organization(long id) {
         if (!organizations.containsKey(id)) throw new ServiceException("NOT_FOUND", "Missing");
-        return organizations.get(id);
+        long count =
+                employees.values().stream()
+                        .filter(employee -> Objects.equals(employee.getOrganizationId(), id))
+                        .count();
+        return organizations.get(id).employeeCount(count);
     }
 
     public Employee employee(long id) {

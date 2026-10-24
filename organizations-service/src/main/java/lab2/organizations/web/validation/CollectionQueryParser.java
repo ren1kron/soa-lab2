@@ -23,6 +23,7 @@ public final class CollectionQueryParser {
             f.put("coordinates.x", new Field(Kind.LONG, false));
             f.put("coordinates.y", new Field(Kind.INT, false));
             f.put("creationDate", new Field(Kind.DATE, false));
+            f.put("employeeCount", new Field(Kind.COUNT, false));
             f.put("annualTurnover", new Field(Kind.DOUBLE, true));
             f.put("type", new Field(Kind.TYPE, true));
             f.put("officialAddress", new Field(Kind.OBJECT, true));

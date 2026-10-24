@@ -21,7 +21,7 @@ class HttpsOrganizationsClientTest {
     private HttpsOrganizationsClient client;
     private int status = 200;
     private String body =
-            "<organization><id>1</id><name>ok</name><coordinates><x>1</x><y>2</y></coordinates><creationDate>2026-10-24</creationDate></organization>";
+            "<organization><id>1</id><name>ok</name><coordinates><x>1</x><y>2</y></coordinates><creationDate>2026-10-24</creationDate><employeeCount>0</employeeCount></organization>";
     private String contentType = "application/xml";
     private final AtomicInteger calls = new AtomicInteger();
     private final java.util.concurrent.atomic.AtomicReference<String> requestBody =
@@ -118,6 +118,29 @@ class HttpsOrganizationsClientTest {
     @Test
     void readsValidatedXmlOverTrustedHttps() {
         assertEquals(1L, client.organization(1).getId());
+        assertEquals(0L, client.organization(1).getEmployeeCount());
+        body =
+                body.replace(
+                        "<employeeCount>0</employeeCount>",
+                        "<employeeCount>9223372036854775807</employeeCount>");
+        assertEquals(Long.MAX_VALUE, client.organization(1).getEmployeeCount());
+    }
+
+    @Test
+    void rejectsMissingNegativeAndMalformedEmployeeCounts() {
+        String valid = body;
+        for (String count :
+                new String[] {
+                    "",
+                    "<employeeCount>-1</employeeCount>",
+                    "<employeeCount>1.5</employeeCount>",
+                    "<employeeCount>9223372036854775808</employeeCount>"
+                }) {
+            body = valid.replace("<employeeCount>0</employeeCount>", count);
+            assertEquals(
+                    INVALID_UPSTREAM_RESPONSE,
+                    assertThrows(ServiceException.class, () -> client.organization(1)).kind);
+        }
     }
 
     @Test

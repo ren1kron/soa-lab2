@@ -82,6 +82,7 @@ export const fieldNames: Record<string, string> = {
   'coordinates.x': 'Координата X',
   'coordinates.y': 'Координата Y',
   creationDate: 'Дата создания',
+  employeeCount: 'Количество сотрудников',
   annualTurnover: 'Годовой оборот',
   type: 'Тип',
   officialAddress: 'Адрес',

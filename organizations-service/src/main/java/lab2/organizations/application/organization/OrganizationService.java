@@ -76,6 +76,7 @@ public final class OrganizationService {
             case "coordinates.x" -> organization.getCoordinates().getX();
             case "coordinates.y" -> organization.getCoordinates().getY();
             case "creationDate" -> organization.getCreationDate();
+            case "employeeCount" -> organization.getEmployeeCount();
             case "annualTurnover" -> organization.getAnnualTurnover();
             case "type" -> organization.getType();
             case "officialAddress" -> address;

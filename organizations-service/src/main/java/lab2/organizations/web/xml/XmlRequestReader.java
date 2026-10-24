@@ -132,7 +132,10 @@ public final class XmlRequestReader {
                         RequestException.detail(
                                 "body",
                                 field,
-                                path.isEmpty() && Set.of("id", "creationDate").contains(name)
+                                path.isEmpty()
+                                                && (Set.of("id", "creationDate").contains(name)
+                                                        || (rule == ORGANIZATION
+                                                                && name.equals("employeeCount")))
                                         ? "READ_ONLY_FIELD"
                                         : "UNKNOWN_FIELD",
                                 "Element is not writable in this object"));

@@ -11,6 +11,8 @@ The React + TypeScript + Vite client is in [`frontend/`](frontend/README.md), in
 
 ## Run with Docker
 
+For an existing Helios Container installation, follow the [Helios deployment guide](docs/helios-container.md). The optional `compose.helios.yaml` override uses prebuilt Linux/amd64 images and TCP/SSH forwarding for the HTTPS APIs.
+
 Install and start Docker Desktop or Docker Engine with Compose v2, then run from this directory:
 
 ```sh
@@ -78,6 +80,8 @@ Reports are under each service's `build/reports/tests/test/` and `build/reports/
 Separate PostgreSQL databases and roles isolate domain data from the manager's acquisition journal. Flyway applies migrations at application startup. The manager never reads domain tables directly.
 
 Organizations use typed columns for their name, coordinates, creation date, turnover, type, address ZIP, and town. Coordinates/address/town are owned values embedded in the organization row; employees reference the organization's generated ID. SQL constraints enforce required values, enum membership, ZIP length, finite positive turnover, and complete optional towns. Column types and nullability follow the current OpenAPI contracts.
+
+Every organization response includes a read-only `employeeCount` (including `0` for empty organizations), calculated from current employee assignments in the same SQL statement. It is available for filtering and sorting, for example `GET /organizations?filter=employeeCount:gte:1&sort=-employeeCount`. No stored counter or schema migration is required.
 
 Both services keep exactly one Flyway migration containing their complete current schema: `V1__domain.sql` for organizations and `V1__acquisition_journal.sql` for the manager. This is a disposable laboratory project: consolidate future schema changes into the existing initial migration instead of adding incremental versions. Recreate the local database after changing a migration, since its Flyway checksum changes.
 

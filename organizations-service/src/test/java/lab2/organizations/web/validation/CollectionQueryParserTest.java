@@ -74,6 +74,10 @@ class CollectionQueryParserTest {
         for (String value :
                 List.of(
                         "id:eq:0",
+                        "employeeCount:eq:-1",
+                        "employeeCount:eq:9223372036854775808",
+                        "employeeCount:isNull:true",
+                        "employeeCount:contains:1",
                         "creationDate:eq:2024-02-30",
                         "type:in:PUBLIC|bad",
                         "coordinates:isNull:true",

@@ -9,6 +9,8 @@ MANAGER=https://localhost:26126
 
 ## Organizations
 
+Every organization in collection, detail, create, update, and acquisition responses includes `<employeeCount>0</employeeCount>` or its current nonnegative count. The server calculates this field from employee assignments; omit it from request bodies.
+
 ```sh
 # Create: 201; id and creationDate are generated.
 curl --cacert .local/certs/organizations.crt -H 'Content-Type: application/xml' \
@@ -18,6 +20,10 @@ curl --cacert .local/certs/organizations.crt -H 'Content-Type: application/xml' 
 curl --cacert .local/certs/organizations.crt -i -G "$ORG/organizations" \
   --data-urlencode 'filter=name:contains:Example,annualTurnover:gte:1000' \
   --data-urlencode 'sort=name,-annualTurnover' --data-urlencode 'page=1' --data-urlencode 'size=20'
+
+# Organizations with employees, ordered by decreasing headcount.
+curl --cacert .local/certs/organizations.crt -i -G "$ORG/organizations" \
+  --data-urlencode 'filter=employeeCount:gte:1' --data-urlencode 'sort=-employeeCount'
 
 # Get and replace mutable fields; omitted optional fields become absent.
 curl --cacert .local/certs/organizations.crt "$ORG/organizations/1"

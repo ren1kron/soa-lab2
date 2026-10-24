@@ -48,6 +48,23 @@ class HttpContractTest {
     }
 
     @Test
+    void rejectsClientSuppliedEmployeeCount() throws Exception {
+        for (var request :
+                new org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder[] {
+                    post("/organizations"), put("/organizations/1")
+                }) {
+            mvc.perform(
+                            request.contentType("application/xml")
+                                    .content(
+                                            "<organization><name>org</name><coordinates><x>1</x><y>2</y></coordinates><employeeCount>5</employeeCount></organization>"))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(
+                            xpath("/error/details/detail[field='employeeCount']/code")
+                                    .string("READ_ONLY_FIELD"));
+        }
+    }
+
+    @Test
     void rejectsUnexpectedBodiesAndBadIds() throws Exception {
         mvc.perform(get("/organizations").content("x")).andExpect(status().isBadRequest());
         mvc.perform(get("/employees/0")).andExpect(status().isBadRequest());

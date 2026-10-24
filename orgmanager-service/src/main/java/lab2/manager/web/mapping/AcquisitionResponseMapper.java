@@ -15,7 +15,8 @@ public final class AcquisitionResponseMapper {
                                 source.getId(),
                                 source.getName(),
                                 coordinates,
-                                source.getCreationDate())
+                                source.getCreationDate(),
+                                source.getEmployeeCount())
                         .annualTurnover(source.getAnnualTurnover());
         if (source.getType() != null)
             organization.type(OrganizationType.fromValue(source.getType().toString()));
