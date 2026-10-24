@@ -1,0 +1,198 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f5f5f5;
+    color: #222;
+    font: 15px Arial, sans-serif;
+}
+
+main {
+    margin: 28px auto;
+    padding: 0 24px 32px;
+    max-width: 1400px;
+}
+
+h1 {
+    font-size: 26px;
+    margin: 0 0 8px;
+}
+
+h2 {
+    font-size: 20px;
+    margin: 0 0 18px;
+}
+
+h3 {
+    font-size: 16px;
+    margin: 20px 0 12px;
+}
+
+p {
+    line-height: 1.5;
+}
+
+.muted {
+    color: #606060;
+}
+
+nav {
+    display: flex;
+    gap: 8px;
+    margin: 24px 0;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #ccc;
+}
+
+button, input, select {
+    font: inherit;
+    border: 1px solid #aaa;
+    border-radius: 3px;
+    padding: 7px 10px;
+}
+
+button {
+    background: #eee;
+    cursor: pointer;
+    color: #222;
+}
+
+button:hover:not(:disabled) {
+    background: #ddd;
+}
+
+button[aria-current="page"] {
+    background: #365f86;
+    border-color: #365f86;
+    color: white;
+}
+
+button:disabled {
+    cursor: default;
+    opacity: .55;
+}
+
+input, select {
+    background: white;
+    min-width: 0;
+}
+
+input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid #365f86;
+    outline-offset: 2px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 430px;
+    margin-bottom: 12px;
+}
+
+section {
+    background: white;
+    border: 1px solid #ccc;
+    padding: 20px;
+    margin: 18px 0;
+}
+
+fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+    gap: 0 18px;
+}
+
+.check {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.nested {
+    padding-left: 18px;
+    border-left: 2px solid #ddd;
+}
+
+.actions, .query-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.query-row {
+    margin-bottom: 10px;
+    align-items: end;
+}
+
+.query-row label {
+    margin-bottom: 0;
+}
+
+.query-row input {
+    max-width: 260px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    margin-top: 16px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 9px;
+    text-align: left;
+    vertical-align: top;
+    white-space: pre;
+    min-width: 80px;
+}
+
+th {
+    background: #eee;
+    font-weight: 600;
+}
+
+.table-actions {
+    min-width: 115px;
+}
+
+.table-actions button {
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+
+.pagination {
+    margin-top: 16px;
+}
+
+.error {
+    border: 1px solid #c78282;
+    background: #fff0f0;
+    color: #8a2020;
+    padding: 14px;
+    margin: 16px 0;
+    overflow-wrap: anywhere;
+}
+
+.success {
+    border: 1px solid #92b491;
+    background: #f1f8f1;
+    padding: 14px;
+}
+

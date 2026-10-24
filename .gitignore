@@ -6,3 +6,8 @@
 *.log
 **/certs/
 **/__pycache__/
+**/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+*.tsbuildinfo
