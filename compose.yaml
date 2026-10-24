@@ -1,0 +1,98 @@
+name: soa-lab2
+services:
+  certificates:
+    image: gradle:8.14.3-jdk17
+    user: root
+    entrypoint: ["/bin/sh", "/scripts/certificates.sh"]
+    volumes:
+      - ./deploy/certificates.sh:/scripts/certificates.sh:ro
+      - organizations-tls:/certs/organizations
+      - manager-tls:/certs/manager
+
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres-local}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/databases.sql:/docker-entrypoint-initdb.d/databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  organizations-service:
+    build:
+      context: .
+      dockerfile: organizations-service/Dockerfile
+    depends_on:
+      certificates:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/organizations
+      DATABASE_USER: organizations
+      DATABASE_PASSWORD: organizations-local
+      APP_TIME_ZONE: ${APP_TIME_ZONE:-Europe/Moscow}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    ports: ["127.0.0.1:${ORGANIZATIONS_HTTPS_PORT:-26125}:8181"]
+    volumes: ["organizations-tls:/run/tls:ro"]
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/opt/payara/healthcheck", "HttpsHealthCheck", "https://localhost:8181/organizations?size=1", "200", "/run/tls/server.crt"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+
+  orgmanager-service:
+    build:
+      context: .
+      dockerfile: orgmanager-service/Dockerfile
+    depends_on:
+      certificates:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      organizations-service:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/orgmanager
+      DATABASE_USER: orgmanager
+      DATABASE_PASSWORD: orgmanager-local
+      ORGANIZATIONS_URL: https://organizations-service:8181
+      UPSTREAM_TRUSTSTORE: /run/tls/upstream-trust.p12
+      UPSTREAM_TRUSTSTORE_PASSWORD: localchangeit
+      UPSTREAM_CONNECT_TIMEOUT_SECONDS: 5
+      UPSTREAM_TIMEOUT_SECONDS: 15
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    ports: ["127.0.0.1:${MANAGER_HTTPS_PORT:-26126}:8443"]
+    volumes: ["manager-tls:/run/tls:ro"]
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/opt/jboss/healthcheck", "HttpsHealthCheck", "https://localhost:8443/orgmanager/hire/0?employeeId=0", "400", "/run/tls/server.crt", "POST"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  acceptance:
+    profiles: ["test"]
+    image: python:3.12.11-alpine
+    depends_on:
+      organizations-service:
+        condition: service_healthy
+      orgmanager-service:
+        condition: service_healthy
+    entrypoint: ["python", "/tests/acceptance.py"]
+    volumes:
+      - ./tests:/tests:ro
+      - organizations-tls:/tls/organizations:ro
+      - manager-tls:/tls/manager:ro
+      - test-state:/state
+
+volumes:
+  postgres-data:
+  organizations-tls:
+  manager-tls:
+  test-state:

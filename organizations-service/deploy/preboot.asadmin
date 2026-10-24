@@ -1,0 +1,5 @@
+set configs.config.server-config.network-config.network-listeners.network-listener.http-listener-1.enabled=false
+set configs.config.server-config.network-config.network-listeners.network-listener.admin-listener.address=127.0.0.1
+set configs.config.server-config.network-config.protocols.protocol.http-listener-2.security-enabled=true
+set configs.config.server-config.network-config.protocols.protocol.http-listener-2.ssl.cert-nickname=server
+set configs.config.server-config.network-config.protocols.protocol.http-listener-2.http.allow-payload-for-undefined-http-methods=true

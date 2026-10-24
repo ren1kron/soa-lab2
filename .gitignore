@@ -1,0 +1,8 @@
+**/.gradle/
+**/build/
+.build-cache/
+.local/
+.env
+*.log
+**/certs/
+**/__pycache__/

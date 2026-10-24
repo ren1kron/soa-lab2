@@ -1,0 +1,16 @@
+embed-server --server-config=standalone.xml --std-out=echo
+if (outcome != success) of /subsystem=elytron/key-store=labKeyStore:read-resource
+    /subsystem=elytron/key-store=labKeyStore:add(path=/run/tls/server.p12,type=PKCS12,credential-reference={clear-text=localchangeit})
+end-if
+if (outcome != success) of /subsystem=elytron/key-manager=labKeyManager:read-resource
+    /subsystem=elytron/key-manager=labKeyManager:add(key-store=labKeyStore,credential-reference={clear-text=localchangeit})
+end-if
+if (outcome != success) of /subsystem=elytron/server-ssl-context=labSslContext:read-resource
+    /subsystem=elytron/server-ssl-context=labSslContext:add(key-manager=labKeyManager,protocols=[TLSv1.3,TLSv1.2])
+end-if
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context,value=labSslContext)
+/subsystem=remoting/http-connector=http-remoting-connector:write-attribute(name=connector-ref,value=https)
+if (outcome == success) of /subsystem=undertow/server=default-server/http-listener=default:read-resource
+    /subsystem=undertow/server=default-server/http-listener=default:remove
+end-if
+stop-embedded-server

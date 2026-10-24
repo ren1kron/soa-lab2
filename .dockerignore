@@ -1,0 +1,6 @@
+.git
+.build-cache
+.local
+**/.gradle
+**/build
+**/*.log

@@ -1,0 +1,2 @@
+`queryParams.mustache` derives from OpenAPI Generator 7.19.0's `JavaSpring/queryParams.mustache` (Apache-2.0).
+The only change emits `java.math.BigInteger` for integer query parameters. The specification leaves `page` unbounded; using the generator's default `Integer` would incorrectly reject large valid page numbers. Model fields keep their declared int32/int64 Java types. Never patch generated Java files.
