@@ -30,7 +30,6 @@ public class DatabaseConfiguration {
     static void migrate(DataSource source, String historyTable) {
         var flyway = Flyway.configure().dataSource(source);
         if (historyTable != null && !historyTable.isEmpty()) {
-            // A shared schema already holds other tables; baseline below V1 so that V1 still runs.
             flyway.table(historyTable).baselineOnMigrate(true).baselineVersion("0");
         }
         flyway.load().migrate();

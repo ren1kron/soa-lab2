@@ -70,7 +70,6 @@ public final class AcquireOrganizationService {
         try {
             organizations.assign(employee, acquirerId);
         } catch (ServiceException error) {
-            // Distinguish a deleted employee from a deleted acquirer without retrying the PUT.
             if (error.kind == ServiceException.Kind.NOT_FOUND) savedEmployee(employee.getId());
             throw error;
         }

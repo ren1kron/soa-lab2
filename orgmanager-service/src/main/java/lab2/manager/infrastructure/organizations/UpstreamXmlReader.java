@@ -155,7 +155,6 @@ final class UpstreamXmlReader {
             else if ((n.getNodeType() == Node.TEXT_NODE
                     || n.getNodeType() == Node.CDATA_SECTION_NODE)
                     && !n.getTextContent().isBlank()) {
-                // Scalar elements are validated by bind; mixed content is invalid for objects.
                 boolean anyElement = false;
                 for (Node child = element.getFirstChild();
                      child != null;
