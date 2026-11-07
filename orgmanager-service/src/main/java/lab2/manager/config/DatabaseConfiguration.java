@@ -19,7 +19,7 @@ public class DatabaseConfiguration {
         config.setMaximumPoolSize(10);
         var source = new HikariDataSource(config);
         try {
-            Flyway.configure().dataSource(source).load().migrate();
+            migrate(source, System.getenv("FLYWAY_HISTORY_TABLE"));
             return source;
         } catch (RuntimeException error) {
             source.close();
@@ -29,6 +29,15 @@ public class DatabaseConfiguration {
 
     public void close(@Disposes DataSource source) {
         ((HikariDataSource) source).close();
+    }
+
+    static void migrate(DataSource source, String historyTable) {
+        var flyway = Flyway.configure().dataSource(source);
+        if (historyTable != null && !historyTable.isEmpty()) {
+            // A shared schema already holds other tables; baseline below V1 so that V1 still runs.
+            flyway.table(historyTable).baselineOnMigrate(true).baselineVersion("0");
+        }
+        flyway.load().migrate();
     }
 
     private static String required(String key) {

@@ -1,4 +1,5 @@
 import {ApiError, serviceError, uncertainResult} from './errors';
+import {serviceUrl} from './service-url';
 
 export {ApiError} from './errors';
 
@@ -40,7 +41,10 @@ export async function request(path: string, method = 'GET', body?: string, manag
   const mutation = method !== 'GET';
   let response: Response;
   try {
-    response = await fetch(`/api/${manager ? 'manager' : 'organizations'}${path}`, {
+    response = await fetch(serviceUrl(path, manager, {
+      organizations: import.meta.env.VITE_ORGANIZATIONS_URL,
+      manager: import.meta.env.VITE_MANAGER_URL,
+    }), {
       method,
       headers: {Accept: 'application/xml', ...(body === undefined ? {} : {'Content-Type': 'application/xml'})},
       body,

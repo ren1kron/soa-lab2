@@ -12,3 +12,10 @@ frontend/dist/
 frontend/.env.local
 frontend/.env.*.local
 *.tsbuildinfo
+/helios.env
+/artifacts/
+/domains/
+/runtimes/
+/tls/
+/private/
+/logs/

@@ -7,7 +7,11 @@ Two independent Java 17 services implementing the existing XML OpenAPI contracts
 | Organizations and employees | Spring MVC 6.2, Payara 6 | `https://localhost:26125` |
 | Organization manager | Jakarta REST 3.1, WildFly 35 / RESTEasy | `https://localhost:26126` |
 
-The React + TypeScript + Vite client is in [`frontend/`](frontend/README.md), including local development and HTTPS startup instructions for Helios. Deployment on Helios requires the actual server addresses and account access. The required route spelling is `/orgmanager/acquise/{acquirerId}/{acquiredId}`.
+The React + TypeScript + Vite client is in [`frontend/`](frontend/). The required route spelling is `/orgmanager/acquise/{acquirerId}/{acquiredId}`.
+
+For deployment directly on Helios without Docker or Node on the server, follow the [native Helios guide](docs/helios-native.md). Payara serves the organizations API and a static frontend WAR; WildFly serves the manager API, and both use the university PostgreSQL server.
+
+Rebuild the Helios project bundle with `sh scripts/build-helios.sh` (JDK 17, Node 24+, npm, Python 3). Use `--docker` to compile the Java services with the pinned local Gradle image. Outputs are in `artifacts/helios/`; subsequent deployments need only the refreshed `soa-lab2-native.tgz`, applied on Helios with `sh deploy/helios/run.sh update ../soa-lab2-native.tgz`. Payara and WildFly distributions are installed once and are preserved by both commands.
 
 ## Run with Docker
 
