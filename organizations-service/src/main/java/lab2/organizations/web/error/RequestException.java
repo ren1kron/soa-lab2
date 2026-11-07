@@ -1,6 +1,7 @@
 package lab2.organizations.web.error;
 
 import java.util.List;
+
 import lab2.organizations.generated.model.ErrorDetail;
 
 public final class RequestException extends RuntimeException {

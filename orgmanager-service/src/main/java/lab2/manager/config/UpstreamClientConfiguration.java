@@ -2,11 +2,13 @@ package lab2.manager.config;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
+
 import java.net.URI;
 import java.nio.file.*;
 import java.security.KeyStore;
 import java.time.Duration;
 import javax.net.ssl.*;
+
 import lab2.manager.application.port.OrganizationsGateway;
 import lab2.manager.infrastructure.organizations.HttpsOrganizationsClient;
 

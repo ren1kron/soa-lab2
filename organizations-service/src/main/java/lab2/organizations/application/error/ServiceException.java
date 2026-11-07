@@ -1,6 +1,5 @@
 package lab2.organizations.application.error;
 
-/** Application failure; the HTTP adapter chooses the response status and shape. */
 public final class ServiceException extends RuntimeException {
     public enum Kind {
         NOT_FOUND,

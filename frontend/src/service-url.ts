@@ -1,4 +1,4 @@
-type Origins = {organizations?: string; manager?: string};
+type Origins = { organizations?: string; manager?: string };
 
 export function serviceUrl(path: string, manager: boolean, origins: Origins = {}): string {
   const configured = manager ? origins.manager : origins.organizations;

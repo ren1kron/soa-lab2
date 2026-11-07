@@ -2,8 +2,10 @@ package lab2.organizations.web.validation;
 
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
+
 import java.io.*;
 import java.util.*;
+
 import lab2.organizations.generated.model.ErrorDetail;
 import lab2.organizations.web.error.RequestException;
 import lab2.organizations.web.xml.XmlResponseWriter;
@@ -36,9 +38,9 @@ public final class RequestGuard extends OncePerRequestFilter {
                             && request.getMethod().equals("GET");
             boolean write =
                     (path.equals("/organizations") || path.equals("/employees"))
-                                    && request.getMethod().equals("POST")
+                            && request.getMethod().equals("POST")
                             || (path.matches("/(organizations|employees)/[^/]+")
-                                    && request.getMethod().equals("PUT"));
+                            && request.getMethod().equals("PUT"));
             var errors = new ArrayList<ErrorDetail>();
             if (list)
                 request.setAttribute(
@@ -88,8 +90,8 @@ public final class RequestGuard extends OncePerRequestFilter {
             String[] segments = path.split("/");
             if (segments.length == 3
                     && (segments[1].equals("employees")
-                            || segments[1].equals("organizations")
-                                    && !segments[2].equals("count"))) {
+                    || segments[1].equals("organizations")
+                    && !segments[2].equals("count"))) {
                 try {
                     ScalarValueRules.parse(ScalarValueRules.Kind.ID, segments[2]);
                 } catch (IllegalArgumentException e) {

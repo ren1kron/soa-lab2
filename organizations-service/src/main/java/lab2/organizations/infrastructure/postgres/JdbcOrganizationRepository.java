@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalLong;
 import javax.sql.DataSource;
+
 import lab2.organizations.application.error.ServiceException;
 import lab2.organizations.application.port.OrganizationRepository;
 import lab2.organizations.generated.model.*;
@@ -75,17 +76,17 @@ public final class JdbcOrganizationRepository implements OrganizationRepository 
     private static Object[] values(OrganizationWrite input, LocalDate date) {
         var address = input.getOfficialAddress();
         var town = address == null ? null : address.getTown();
-        return new Object[] {
-            input.getName(),
-            input.getCoordinates().getX(),
-            input.getCoordinates().getY(),
-            date,
-            input.getAnnualTurnover(),
-            input.getType() == null ? null : input.getType().toString(),
-            address == null ? null : address.getZipCode(),
-            town == null ? null : town.getX(),
-            town == null ? null : town.getY(),
-            town == null ? null : town.getName()
+        return new Object[]{
+                input.getName(),
+                input.getCoordinates().getX(),
+                input.getCoordinates().getY(),
+                date,
+                input.getAnnualTurnover(),
+                input.getType() == null ? null : input.getType().toString(),
+                address == null ? null : address.getZipCode(),
+                town == null ? null : town.getX(),
+                town == null ? null : town.getY(),
+                town == null ? null : town.getName()
         };
     }
 }

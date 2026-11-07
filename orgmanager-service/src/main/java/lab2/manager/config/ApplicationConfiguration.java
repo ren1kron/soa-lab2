@@ -2,7 +2,9 @@ package lab2.manager.config;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
+
 import javax.sql.DataSource;
+
 import lab2.manager.application.acquisition.AcquireOrganizationService;
 import lab2.manager.application.hiring.HireEmployeeService;
 import lab2.manager.application.port.*;

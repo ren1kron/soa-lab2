@@ -2,7 +2,6 @@ package lab2.manager.application.error;
 
 import java.util.List;
 
-/** Failures carry application meaning, while adapters own their protocol mapping. */
 public final class ServiceException extends RuntimeException {
     public enum Kind {
         NOT_FOUND,
@@ -16,7 +15,8 @@ public final class ServiceException extends RuntimeException {
         UPSTREAM_TIMEOUT
     }
 
-    public record Detail(String location, String field, String code, String message) {}
+    public record Detail(String location, String field, String code, String message) {
+    }
 
     public final Kind kind;
     public final String code;
@@ -37,10 +37,9 @@ public final class ServiceException extends RuntimeException {
         return switch (code) {
             case "NOT_FOUND" -> Kind.NOT_FOUND;
             case "ORGANIZATION_NOT_EMPTY",
-                            "EMPLOYEE_ALREADY_ASSIGNED",
-                            "SELF_ACQUISITION",
-                            "CONCURRENT_MODIFICATION" ->
-                    Kind.CONFLICT;
+                 "EMPLOYEE_ALREADY_ASSIGNED",
+                 "SELF_ACQUISITION",
+                 "CONCURRENT_MODIFICATION" -> Kind.CONFLICT;
             case "INTEGRATION_FAILURE" -> Kind.INTEGRATION_FAILURE;
             case "UPSTREAM_INTERNAL_ERROR" -> Kind.UPSTREAM_INTERNAL_ERROR;
             case "INVALID_UPSTREAM_RESPONSE" -> Kind.INVALID_UPSTREAM_RESPONSE;

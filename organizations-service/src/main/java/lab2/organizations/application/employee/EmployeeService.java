@@ -52,9 +52,8 @@ public final class EmployeeService {
                             case "id" -> employee.getId();
                             case "name" -> employee.getName();
                             case "organizationId" -> employee.getOrganizationId();
-                            default ->
-                                    throw new IllegalArgumentException(
-                                            "Unknown parsed field: " + field);
+                            default -> throw new IllegalArgumentException(
+                                    "Unknown parsed field: " + field);
                         });
     }
 }

@@ -4,11 +4,12 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.function.BiFunction;
+
 import lab2.organizations.generated.model.OrganizationType;
 
-/** Parsed query data and execution, independent of HTTP parsing and serialization. */
 public final class CollectionQuery {
-    public record Order(String field, boolean descending) {}
+    public record Order(String field, boolean descending) {
+    }
 
     public record Condition(String field, String operator, List<Object> values) {
         public Condition {
@@ -38,21 +39,15 @@ public final class CollectionQuery {
     }
 
     public <T> PageResult<T> apply(List<T> items, BiFunction<T, String, Object> fields) {
-        var selected =
-                items.stream()
-                        .filter(
-                                item ->
+        var selected = items.stream()
+                            .filter(item ->
                                         conditions.stream()
-                                                .allMatch(
-                                                        condition ->
-                                                                matches(
-                                                                        condition,
-                                                                        fields.apply(
-                                                                                item,
-                                                                                condition
-                                                                                        .field()))))
-                        .sorted((a, b) -> compare(a, b, fields))
-                        .toList();
+                                                .allMatch(condition ->
+                                                                    matches(condition, fields.apply(
+                                                                            item, condition
+                                                                            .field()))))
+                            .sorted((a, b) -> compare(a, b, fields))
+                            .toList();
         var offset = page.subtract(BigInteger.ONE).multiply(BigInteger.valueOf(size));
         if (offset.compareTo(BigInteger.valueOf(selected.size())) >= 0) {
             return new PageResult<>(List.of(), selected.size(), page, size);

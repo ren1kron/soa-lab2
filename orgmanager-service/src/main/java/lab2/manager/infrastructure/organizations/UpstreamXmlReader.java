@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
 import java.io.*;
 import java.math.*;
 import java.time.LocalDate;
@@ -11,11 +12,11 @@ import java.util.*;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.stream.*;
+
 import lab2.manager.application.error.ServiceException;
 import org.w3c.dom.*;
 import org.xml.sax.helpers.DefaultHandler;
 
-/** XML adapter around generated models; validates before Jackson can coerce scalars. */
 final class UpstreamXmlReader {
     private static final ObjectMapper JSON =
             new ObjectMapper()
@@ -152,13 +153,13 @@ final class UpstreamXmlReader {
         for (Node n = element.getFirstChild(); n != null; n = n.getNextSibling()) {
             if (n instanceof Element e) result.add(e);
             else if ((n.getNodeType() == Node.TEXT_NODE
-                            || n.getNodeType() == Node.CDATA_SECTION_NODE)
+                    || n.getNodeType() == Node.CDATA_SECTION_NODE)
                     && !n.getTextContent().isBlank()) {
                 // Scalar elements are validated by bind; mixed content is invalid for objects.
                 boolean anyElement = false;
                 for (Node child = element.getFirstChild();
-                        child != null;
-                        child = child.getNextSibling())
+                     child != null;
+                     child = child.getNextSibling())
                     if (child instanceof Element) anyElement = true;
                 if (anyElement) throw ServiceException.upstream();
             }

@@ -4,7 +4,8 @@ import lab2.manager.application.error.ServiceException;
 import lab2.manager.generated.model.ErrorDetail;
 
 public final class ErrorResponseMapper {
-    private ErrorResponseMapper() {}
+    private ErrorResponseMapper() {
+    }
 
     public static int status(ServiceException error) {
         return switch (error.kind) {

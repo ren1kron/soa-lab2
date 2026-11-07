@@ -3,9 +3,11 @@ package lab2.manager.web.validation;
 import jakarta.ws.rs.container.*;
 import jakarta.ws.rs.core.*;
 import jakarta.ws.rs.ext.Provider;
+
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.*;
+
 import lab2.manager.generated.model.ErrorDetail;
 import lab2.manager.web.error.ManagerExceptionMapper;
 import lab2.manager.web.error.RequestException;
@@ -138,8 +140,8 @@ public class ManagerRequestValidator implements ContainerRequestFilter, Containe
         var origin = request.getHeaderString("Origin");
         var allowed = System.getenv("CORS_ORIGINS");
         return origin != null
-                        && allowed != null
-                        && Arrays.asList(allowed.split(",")).contains(origin)
+                && allowed != null
+                && Arrays.asList(allowed.split(",")).contains(origin)
                 ? origin
                 : null;
     }

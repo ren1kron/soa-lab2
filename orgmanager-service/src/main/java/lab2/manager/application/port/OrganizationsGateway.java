@@ -1,6 +1,7 @@
 package lab2.manager.application.port;
 
 import java.util.List;
+
 import lab2.manager.generated.upstream.model.Employee;
 import lab2.manager.generated.upstream.model.Organization;
 

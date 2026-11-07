@@ -5,7 +5,8 @@ import java.util.*;
 import javax.xml.stream.*;
 
 public final class XmlResponseWriter {
-    private XmlResponseWriter() {}
+    private XmlResponseWriter() {
+    }
 
     public static byte[] write(Object body, String root) {
         try {

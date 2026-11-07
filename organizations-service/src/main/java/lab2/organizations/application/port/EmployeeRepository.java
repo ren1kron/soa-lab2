@@ -1,6 +1,7 @@
 package lab2.organizations.application.port;
 
 import java.util.List;
+
 import lab2.organizations.generated.model.Employee;
 import lab2.organizations.generated.model.EmployeeWrite;
 

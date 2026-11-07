@@ -1,6 +1,7 @@
 package lab2.manager.application.port;
 
 import java.util.List;
+
 import lab2.manager.application.acquisition.AcquisitionSnapshot;
 
 public interface AcquisitionJournal {

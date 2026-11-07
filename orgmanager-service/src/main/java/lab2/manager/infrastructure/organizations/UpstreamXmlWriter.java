@@ -2,10 +2,12 @@ package lab2.manager.infrastructure.organizations;
 
 import java.io.ByteArrayOutputStream;
 import javax.xml.stream.XMLOutputFactory;
+
 import lab2.manager.generated.upstream.model.EmployeeWrite;
 
 final class UpstreamXmlWriter {
-    private UpstreamXmlWriter() {}
+    private UpstreamXmlWriter() {
+    }
 
     static byte[] employee(EmployeeWrite input) {
         try {

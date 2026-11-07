@@ -4,7 +4,8 @@ import lab2.manager.application.acquisition.AcquisitionOutcome;
 import lab2.manager.generated.model.*;
 
 public final class AcquisitionResponseMapper {
-    private AcquisitionResponseMapper() {}
+    private AcquisitionResponseMapper() {
+    }
 
     public static Acquisition response(AcquisitionOutcome outcome) {
         var source = outcome.organization();
@@ -12,11 +13,11 @@ public final class AcquisitionResponseMapper {
                 new Coordinates(source.getCoordinates().getX(), source.getCoordinates().getY());
         var organization =
                 new Organization(
-                                source.getId(),
-                                source.getName(),
-                                coordinates,
-                                source.getCreationDate(),
-                                source.getEmployeeCount())
+                        source.getId(),
+                        source.getName(),
+                        coordinates,
+                        source.getCreationDate(),
+                        source.getEmployeeCount())
                         .annualTurnover(source.getAnnualTurnover());
         if (source.getType() != null)
             organization.type(OrganizationType.fromValue(source.getType().toString()));

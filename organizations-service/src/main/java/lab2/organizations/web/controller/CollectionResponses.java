@@ -1,11 +1,13 @@
 package lab2.organizations.web.controller;
 
 import java.util.List;
+
 import lab2.organizations.application.query.PageResult;
 import org.springframework.http.ResponseEntity;
 
 final class CollectionResponses {
-    private CollectionResponses() {}
+    private CollectionResponses() {
+    }
 
     static <T> ResponseEntity<List<T>> page(PageResult<T> result) {
         return ResponseEntity.ok()

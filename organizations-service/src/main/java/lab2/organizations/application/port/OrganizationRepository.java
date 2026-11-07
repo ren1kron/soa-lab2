@@ -3,6 +3,7 @@ package lab2.organizations.application.port;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.OptionalLong;
+
 import lab2.organizations.generated.model.*;
 
 public interface OrganizationRepository {

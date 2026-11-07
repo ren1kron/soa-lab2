@@ -34,11 +34,11 @@ public final class ScalarValueRules {
                             kind == Kind.ID
                                     ? BigInteger.ONE
                                     : kind == Kind.COUNT
-                                            ? BigInteger.ZERO
-                                            : BigInteger.valueOf(
-                                                    kind == Kind.INT
-                                                            ? Integer.MIN_VALUE
-                                                            : Long.MIN_VALUE);
+                                      ? BigInteger.ZERO
+                                      : BigInteger.valueOf(
+                                    kind == Kind.INT
+                                    ? Integer.MIN_VALUE
+                                    : Long.MIN_VALUE);
                     var max =
                             BigInteger.valueOf(
                                     kind == Kind.INT ? Integer.MAX_VALUE : Long.MAX_VALUE);
@@ -83,9 +83,8 @@ public final class ScalarValueRules {
                     yield LocalDate.parse(value);
                 }
                 case TEXT -> value;
-                case OBJECT ->
-                        throw new IllegalArgumentException(
-                                "INVALID_OPERATOR:Objects support only isNull");
+                case OBJECT -> throw new IllegalArgumentException(
+                        "INVALID_OPERATOR:Objects support only isNull");
             };
         } catch (java.time.DateTimeException | NumberFormatException e) {
             throw new IllegalArgumentException(

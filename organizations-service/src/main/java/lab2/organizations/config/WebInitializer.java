@@ -12,16 +12,16 @@ public final class WebInitializer extends AbstractAnnotationConfigDispatcherServ
 
     @Override
     protected Class<?>[] getServletConfigClasses() {
-        return new Class<?>[] {ApplicationConfiguration.class};
+        return new Class<?>[]{ApplicationConfiguration.class};
     }
 
     @Override
     protected String[] getServletMappings() {
-        return new String[] {"/"};
+        return new String[]{"/"};
     }
 
     @Override
     protected Filter[] getServletFilters() {
-        return new Filter[] {new RequestGuard()};
+        return new Filter[]{new RequestGuard()};
     }
 }

@@ -3,6 +3,7 @@ package lab2.manager.infrastructure.postgres;
 import java.sql.*;
 import java.util.*;
 import javax.sql.DataSource;
+
 import lab2.manager.application.acquisition.AcquisitionSnapshot;
 import lab2.manager.application.error.ServiceException;
 import lab2.manager.application.port.AcquisitionJournal;
@@ -70,8 +71,8 @@ public final class PostgresAcquisitionJournal implements AcquisitionJournal {
         @Override
         public AcquisitionSnapshot load() {
             try (var stmt =
-                    connection.prepareStatement(
-                            "SELECT acquirer_id,employee_ids::text FROM acquisition_journal WHERE source_id=?")) {
+                         connection.prepareStatement(
+                                 "SELECT acquirer_id,employee_ids::text FROM acquisition_journal WHERE source_id=?")) {
                 stmt.setLong(1, acquired);
                 try (var rs = stmt.executeQuery()) {
                     if (!rs.next()) return null;
@@ -92,8 +93,8 @@ public final class PostgresAcquisitionJournal implements AcquisitionJournal {
         @Override
         public void save(List<Long> ids) {
             try (var stmt =
-                    connection.prepareStatement(
-                            "INSERT INTO acquisition_journal(source_id,acquirer_id,employee_ids) VALUES (?,?,?::jsonb)")) {
+                         connection.prepareStatement(
+                                 "INSERT INTO acquisition_journal(source_id,acquirer_id,employee_ids) VALUES (?,?,?::jsonb)")) {
                 stmt.setLong(1, acquired);
                 stmt.setLong(2, acquirer);
                 stmt.setString(3, serializer.serialize(ids));
@@ -106,8 +107,8 @@ public final class PostgresAcquisitionJournal implements AcquisitionJournal {
         @Override
         public void complete() {
             try (var stmt =
-                    connection.prepareStatement(
-                            "DELETE FROM acquisition_journal WHERE source_id=? AND acquirer_id=?")) {
+                         connection.prepareStatement(
+                                 "DELETE FROM acquisition_journal WHERE source_id=? AND acquirer_id=?")) {
                 stmt.setLong(1, acquired);
                 stmt.setLong(2, acquirer);
                 stmt.executeUpdate();

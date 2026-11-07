@@ -31,6 +31,31 @@ The certificate initialization container creates separate self-signed RSA server
 
 Optional `.env` settings are `ORGANIZATIONS_HTTPS_PORT`, `MANAGER_HTTPS_PORT`, `APP_TIME_ZONE`, and comma-separated `CORS_ORIGINS`. Default ports are 26125/26126, the date-generation time zone is Europe/Moscow, and cross-origin access is disabled. Existing specification URLs remain Lab #1 placeholders; use the HTTPS URLs above.
 
+## Заполнение БД
+
+После первого запуска сервисов добавьте организации и сотрудников
+
+Для Docker
+
+```sh
+sh scripts/seed.sh
+```
+
+Для helios из корня проекта с настроенным `helios.env`
+
+```sh
+sh scripts/seed.sh helios
+```
+
+Скрипт добавляет 30 организаций `orga1` ... `orga30` и 90 сотрудников `employee1` ... `employee90`
+Типы, даты, обороты, координаты и адреса различаются
+Есть организации без сотрудников и сотрудники без работодателя
+В `orga1` больше 20 сотрудников для проверки страниц
+
+Существующие записи сохраняются
+Повторный запуск добавит еще такой же набор с новыми ID
+Если запускаете на helios без исходников проекта, скопируйте туда оба файла `scripts/seed.sh` и `scripts/seed.sql`
+
 ## Independent builds and generation
 
 Each service has its own Gradle 8.14.3 wrapper and Kotlin build configuration. Run with JDK 17:

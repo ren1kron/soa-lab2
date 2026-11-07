@@ -2,6 +2,7 @@ package lab2.organizations.web.validation;
 
 import java.math.BigInteger;
 import java.util.*;
+
 import lab2.organizations.application.query.CollectionQuery;
 import lab2.organizations.application.query.CollectionQuery.Condition;
 import lab2.organizations.application.query.CollectionQuery.Order;
@@ -10,9 +11,11 @@ import lab2.organizations.web.error.RequestException;
 import lab2.organizations.web.validation.ScalarValueRules.Kind;
 
 public final class CollectionQueryParser {
-    private CollectionQueryParser() {}
+    private CollectionQueryParser() {
+    }
 
-    private record Field(Kind kind, boolean nullable) {}
+    private record Field(Kind kind, boolean nullable) {
+    }
 
     private static Map<String, Field> fields(boolean employees) {
         var f = new LinkedHashMap<String, Field>();
@@ -125,8 +128,8 @@ public final class CollectionQueryParser {
                     errors.stream().allMatch(e -> e.getField().startsWith("sort["))
                             ? "INVALID_SORT"
                             : errors.stream().allMatch(e -> e.getField().startsWith("filter["))
-                                    ? "INVALID_FILTER"
-                                    : "INVALID_REQUEST";
+                              ? "INVALID_FILTER"
+                              : "INVALID_REQUEST";
             throw new RequestException(400, code, "Invalid collection parameters", errors);
         }
         return new CollectionQuery(page, size, orders, conditions);
@@ -173,7 +176,7 @@ public final class CollectionQueryParser {
             return new Condition(path, op, List.of(value));
         }
         var values = new ArrayList<Object>();
-        for (String item : op.equals("in") ? value.split("\\|", -1) : new String[] {value}) {
+        for (String item : op.equals("in") ? value.split("\\|", -1) : new String[]{value}) {
             if (op.equals("in") && item.isEmpty())
                 throw new IllegalArgumentException("INVALID_FORMAT:in requires nonempty values");
             values.add(ScalarValueRules.parse(field.kind, item));

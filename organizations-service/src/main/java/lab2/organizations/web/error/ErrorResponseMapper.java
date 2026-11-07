@@ -1,10 +1,12 @@
 package lab2.organizations.web.error;
 
 import java.util.List;
+
 import lab2.organizations.application.error.ServiceException;
 
 public final class ErrorResponseMapper {
-    private ErrorResponseMapper() {}
+    private ErrorResponseMapper() {
+    }
 
     public static int status(ServiceException error) {
         return switch (error.kind) {

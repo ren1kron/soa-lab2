@@ -14,8 +14,10 @@ import lab2.manager.web.xml.ManagerResponseWriter;
 @ApplicationScoped
 @Path("/orgmanager")
 public class ManagerResource implements OrgmanagerApi {
-    @Inject HireEmployeeService hiring;
-    @Inject AcquireOrganizationService acquisitions;
+    @Inject
+    HireEmployeeService hiring;
+    @Inject
+    AcquireOrganizationService acquisitions;
 
     @Override
     public Response managerHireEmployee(Long id, Long employeeId) {

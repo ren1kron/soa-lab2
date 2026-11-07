@@ -51,9 +51,9 @@ public final class ApiExceptionHandler {
                     .contentType(MediaType.APPLICATION_XML)
                     .body(
                             new RequestException(
-                                            status,
-                                            code,
-                                            "Request does not match an available operation")
+                                    status,
+                                    code,
+                                    "Request does not match an available operation")
                                     .body());
         }
         java.util.logging.Logger.getLogger(ApiExceptionHandler.class.getName())

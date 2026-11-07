@@ -1,6 +1,7 @@
 package lab2.manager.application.acquisition;
 
 import java.util.Objects;
+
 import lab2.manager.application.error.ServiceException;
 import lab2.manager.application.port.*;
 import lab2.manager.generated.upstream.model.Employee;
@@ -22,8 +23,6 @@ public final class AcquireOrganizationService {
             if (snapshot == null) {
                 organizations.organization(sourceId);
                 var ids = organizations.employeeIds(sourceId);
-                // This commit precedes every transfer and is not part of a workflow-wide
-                // transaction.
                 lease.save(ids);
                 snapshot = new AcquisitionSnapshot(acquirerId, sourceId, ids);
             } else if (snapshot.acquirerId() != acquirerId) {

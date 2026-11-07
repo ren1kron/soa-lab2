@@ -6,6 +6,7 @@ import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
 import javax.net.ssl.SSLContext;
+
 import lab2.manager.application.error.ServiceException;
 import lab2.manager.application.port.OrganizationsGateway;
 import lab2.manager.generated.upstream.model.*;
@@ -104,10 +105,10 @@ public final class HttpsOrganizationsClient implements OrganizationsGateway {
         var value =
                 UpstreamXmlReader.read(
                         request(
-                                        "PUT",
-                                        "/employees/" + employee.getId(),
-                                        UpstreamXmlWriter.employee(input),
-                                        200)
+                                "PUT",
+                                "/employees/" + employee.getId(),
+                                UpstreamXmlWriter.employee(input),
+                                200)
                                 .body(),
                         "employee",
                         Employee.class);
@@ -118,7 +119,8 @@ public final class HttpsOrganizationsClient implements OrganizationsGateway {
         return value;
     }
 
-    private record Page(List<Employee> employees, long total) {}
+    private record Page(List<Employee> employees, long total) {
+    }
 
     private Page page(long organizationId, long page, int size) {
         var response =

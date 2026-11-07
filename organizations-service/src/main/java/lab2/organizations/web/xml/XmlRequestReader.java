@@ -5,6 +5,7 @@ import java.util.*;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.stream.*;
+
 import lab2.organizations.generated.model.ErrorDetail;
 import lab2.organizations.web.error.RequestException;
 import lab2.organizations.web.validation.ScalarValueRules;
@@ -14,9 +15,11 @@ import org.xml.sax.*;
 import org.xml.sax.helpers.DefaultHandler;
 
 public final class XmlRequestReader {
-    private XmlRequestReader() {}
+    private XmlRequestReader() {
+    }
 
-    private record Rule(Kind kind, boolean required, Map<String, Rule> children) {}
+    private record Rule(Kind kind, boolean required, Map<String, Rule> children) {
+    }
 
     private static Rule scalar(Kind k, boolean required) {
         return new Rule(k, required, Map.of());
@@ -115,7 +118,7 @@ public final class XmlRequestReader {
         for (Node node = element.getFirstChild(); node != null; node = node.getNextSibling()) {
             if (!(node instanceof Element child)) {
                 if ((node.getNodeType() == Node.TEXT_NODE
-                                || node.getNodeType() == Node.CDATA_SECTION_NODE)
+                        || node.getNodeType() == Node.CDATA_SECTION_NODE)
                         && !node.getTextContent().isBlank())
                     errors.add(
                             RequestException.detail(
@@ -133,9 +136,9 @@ public final class XmlRequestReader {
                                 "body",
                                 field,
                                 path.isEmpty()
-                                                && (Set.of("id", "creationDate").contains(name)
-                                                        || (rule == ORGANIZATION
-                                                                && name.equals("employeeCount")))
+                                        && (Set.of("id", "creationDate").contains(name)
+                                        || (rule == ORGANIZATION
+                                        && name.equals("employeeCount")))
                                         ? "READ_ONLY_FIELD"
                                         : "UNKNOWN_FIELD",
                                 "Element is not writable in this object"));

@@ -1,7 +1,9 @@
 package lab2.organizations.config;
 
 import com.zaxxer.hikari.*;
+
 import javax.sql.DataSource;
+
 import org.flywaydb.core.Flyway;
 import org.springframework.context.annotation.*;
 
