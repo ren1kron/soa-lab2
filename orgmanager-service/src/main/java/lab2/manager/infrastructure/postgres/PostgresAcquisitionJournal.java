@@ -28,7 +28,7 @@ public final class PostgresAcquisitionJournal implements AcquisitionJournal {
                         connection.close();
                         throw new ServiceException(
                                 "CONCURRENT_MODIFICATION",
-                                "Another acquisition is active for this source organization");
+                                "Для поглощаемой организации уже выполняется другая операция поглощения");
                     }
                 }
             }
@@ -75,10 +75,7 @@ public final class PostgresAcquisitionJournal implements AcquisitionJournal {
                 stmt.setLong(1, acquired);
                 try (var rs = stmt.executeQuery()) {
                     if (!rs.next()) return null;
-                    if (rs.getLong(1) != acquirer)
-                        throw new ServiceException(
-                                "CONCURRENT_MODIFICATION",
-                                "An unfinished acquisition exists with another acquirer");
+                    if (rs.getLong(1) != acquirer) throw ServiceException.differentAcquirer();
                     return new AcquisitionSnapshot(
                             acquirer, acquired, serializer.deserialize(rs.getString(2)));
                 }

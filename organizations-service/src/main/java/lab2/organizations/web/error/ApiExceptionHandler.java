@@ -27,10 +27,7 @@ public final class ApiExceptionHandler {
             MethodArgumentTypeMismatchException e) {
         return api(
                 RequestException.invalid(
-                        "path",
-                        e.getName(),
-                        "INVALID_TYPE",
-                        "Value does not match the declared type"));
+                        "path", e.getName(), "INVALID_TYPE", "Значение имеет неверный тип"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -53,7 +50,7 @@ public final class ApiExceptionHandler {
                             new RequestException(
                                             status,
                                             code,
-                                            "Request does not match an available operation")
+                                            "Запрос не соответствует доступной операции")
                                     .body());
         }
         java.util.logging.Logger.getLogger(ApiExceptionHandler.class.getName())
@@ -62,6 +59,6 @@ public final class ApiExceptionHandler {
                 new RequestException(
                         500,
                         "INTERNAL_ERROR",
-                        "Request failed; check current state before repeating a change"));
+                        "Не удалось завершить запрос. Если вы изменяли данные, проверьте, применились ли изменения"));
     }
 }

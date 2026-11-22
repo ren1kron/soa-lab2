@@ -3,6 +3,7 @@ package lab2.organizations.web.xml;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.charset.StandardCharsets;
+import lab2.organizations.generated.model.Employee;
 import lab2.organizations.generated.model.EmployeeWrite;
 import lab2.organizations.generated.model.OrganizationWrite;
 import lab2.organizations.web.error.RequestException;
@@ -22,6 +23,15 @@ class XmlRequestReaderTest {
         assertEquals(" ", org.getName());
         assertEquals(Long.MIN_VALUE, org.getCoordinates().getX());
         assertEquals("", org.getOfficialAddress().getZipCode());
+    }
+
+    @Test
+    void preservesXmlCharacterReferencesWhenWritingNames() {
+        var input =
+                read("<employee><name> a&#13;&amp;&lt;б </name></employee>", EmployeeWrite.class);
+        var bytes = XmlResponseWriter.write(new Employee(1L, input.getName()), "employee");
+        var xml = new String(bytes, StandardCharsets.UTF_8).replace("<id>1</id>", "");
+        assertEquals(input.getName(), read(xml, EmployeeWrite.class).getName());
     }
 
     @Test

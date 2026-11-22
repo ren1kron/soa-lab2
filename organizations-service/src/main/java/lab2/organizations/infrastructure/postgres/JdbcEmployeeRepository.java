@@ -24,7 +24,7 @@ public final class JdbcEmployeeRepository implements EmployeeRepository {
         var rows =
                 jdbc.query(
                         "SELECT id,name,organization_id FROM employees WHERE id=?", EMPLOYEE, id);
-        if (rows.isEmpty()) throw ServiceException.notFound();
+        if (rows.isEmpty()) throw ServiceException.notFound("Сотрудник с указанным ID не найден");
         return rows.get(0);
     }
 
@@ -57,7 +57,7 @@ public final class JdbcEmployeeRepository implements EmployeeRepository {
     @Override
     public void delete(long id) {
         if (jdbc.update("DELETE FROM employees WHERE id=?", id) == 0)
-            throw ServiceException.notFound();
+            throw ServiceException.notFound("Сотрудник с указанным ID не найден");
     }
 
     @Override

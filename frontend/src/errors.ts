@@ -53,6 +53,7 @@ const reasons: Record<string, string> = {
   INVALID_FORMAT: 'Неверный формат',
   INVALID_ENUM: 'Выберите тип организации',
   INVALID_OPERATOR: 'Выберите другое условие фильтра',
+  UNKNOWN_OPERATOR: 'Выберите другое условие фильтра',
   UNKNOWN_FIELD: 'Это поле недоступно',
   READ_ONLY_FIELD: 'Это поле нельзя изменить',
   DUPLICATE_FIELD: 'Поле передано несколько раз',
@@ -62,6 +63,7 @@ const reasons: Record<string, string> = {
   MISSING_BODY: 'Заполните форму',
   UNEXPECTED_BODY: 'Не удалось отправить запрос',
   UNSUPPORTED_MEDIA_TYPE: 'Не удалось отправить данные',
+  UNSUPPORTED_ENCODING: 'Не удалось отправить данные',
 };
 
 export const uncertainResult = ['Неизвестно сохранились ли изменения', 'Проверьте данные перед повтором'];

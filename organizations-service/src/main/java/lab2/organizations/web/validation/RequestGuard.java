@@ -4,7 +4,6 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.*;
 import java.util.*;
-import lab2.organizations.generated.model.ErrorDetail;
 import lab2.organizations.web.error.RequestException;
 import lab2.organizations.web.xml.XmlResponseWriter;
 import org.springframework.http.MediaType;
@@ -22,7 +21,7 @@ public final class RequestGuard extends OncePerRequestFilter {
             return;
         }
         try {
-            requireXmlAccept(original.getHeader("Accept"));
+            requireXmlAccept(Collections.list(original.getHeaders("Accept")));
             var request = new CachedRequest(original);
             String path =
                     java.net
@@ -39,50 +38,31 @@ public final class RequestGuard extends OncePerRequestFilter {
                                     && request.getMethod().equals("POST")
                             || (path.matches("/(organizations|employees)/[^/]+")
                                     && request.getMethod().equals("PUT"));
-            var errors = new ArrayList<ErrorDetail>();
-            if (list)
-                request.setAttribute(
-                        "collectionQuery",
-                        CollectionQueryParser.parse(request.getParameterMap(), employee));
-            else {
-                Set<String> allowed =
-                        path.equals("/organizations/count") && request.getMethod().equals("GET")
-                                ? Set.of("typeGreaterThan")
-                                : Set.of();
-                request.getParameterMap()
-                        .forEach(
-                                (key, v) -> {
-                                    if (!allowed.contains(key))
-                                        errors.add(
-                                                RequestException.detail(
-                                                        "query",
-                                                        key,
-                                                        "UNKNOWN_FIELD",
-                                                        "Unknown query parameter"));
-                                    if (v.length != 1)
-                                        errors.add(
-                                                RequestException.detail(
-                                                        "query",
-                                                        key,
-                                                        "DUPLICATE_PARAMETER",
-                                                        "Pass this parameter once"));
-                                });
-                if (allowed.contains("typeGreaterThan")) {
+            var errors = new RequestErrors();
+            if (list) {
+                try {
+                    request.setAttribute(
+                            "collectionQuery",
+                            CollectionQueryParser.parse(request.getParameterMap(), employee));
+                } catch (RequestException e) {
+                    errors.add(e);
+                }
+            } else {
+                boolean count =
+                        path.equals("/organizations/count") && request.getMethod().equals("GET");
+                errors.checkParameters(
+                        request.getParameterMap(), count ? Set.of("typeGreaterThan") : Set.of());
+                if (count) {
                     String value = request.getParameter("typeGreaterThan");
                     if (value == null)
-                        errors.add(
-                                RequestException.detail(
-                                        "query",
-                                        "typeGreaterThan",
-                                        "REQUIRED",
-                                        "This query parameter is required"));
+                        errors.invalid(
+                                "Отсутствует обязательный параметр typeGreaterThan",
+                                "query",
+                                "typeGreaterThan",
+                                "REQUIRED",
+                                "Передайте обязательный query-параметр typeGreaterThan");
                     else if (!ScalarValueRules.TYPES.contains(value))
-                        errors.add(
-                                RequestException.detail(
-                                        "query",
-                                        "typeGreaterThan",
-                                        "INVALID_ENUM",
-                                        "Unknown organization type"));
+                        invalidType(errors, "query", "typeGreaterThan");
                 }
             }
             String[] segments = path.split("/");
@@ -90,55 +70,36 @@ public final class RequestGuard extends OncePerRequestFilter {
                     && (segments[1].equals("employees")
                             || segments[1].equals("organizations")
                                     && !segments[2].equals("count"))) {
+                String value = segments[2];
                 try {
-                    ScalarValueRules.parse(ScalarValueRules.Kind.ID, segments[2]);
+                    ScalarValueRules.parse(ScalarValueRules.Kind.ID, value);
                 } catch (IllegalArgumentException e) {
-                    errors.add(
-                            RequestException.detail(
-                                    "path",
-                                    employee ? "employeeId" : "id",
-                                    "INVALID_TYPE",
-                                    "ID must be an integer from 1 to 9223372036854775807"));
+                    String field = employee ? "employeeId" : "id";
+                    errors.invalid(
+                            "Неверный параметр " + field,
+                            "path",
+                            field,
+                            "INVALID_TYPE",
+                            "ID должен быть целым числом от 1 до 9223372036854775807. Значение "
+                                    + value
+                                    + " не подходит");
                 }
             }
             if (segments.length == 4
                     && path.startsWith("/organizations/type/")
                     && !ScalarValueRules.TYPES.contains(segments[3]))
-                errors.add(
-                        RequestException.detail(
-                                "path", "type", "INVALID_ENUM", "Unknown organization type"));
+                invalidType(errors, "path", "type");
             if (!write && request.body.length > 0)
-                errors.add(
-                        RequestException.detail(
-                                "body",
-                                "$",
-                                "UNEXPECTED_BODY",
-                                "This operation does not accept a body"));
-            if (!errors.isEmpty())
-                throw new RequestException(400, "INVALID_REQUEST", "Invalid request", errors);
-            if (write) {
-                if (request.body.length == 0)
-                    throw new RequestException(
-                            400,
-                            "MISSING_BODY",
-                            "An XML body is required",
-                            List.of(
-                                    RequestException.detail(
-                                            "body", "$", "REQUIRED", "An XML body is required")));
-                String encoding = request.getHeader("Content-Encoding");
-                if (encoding != null && !encoding.equalsIgnoreCase("identity"))
-                    throw media("Content-Encoding");
-                try {
-                    var contentType =
-                            MediaType.parseMediaType(
-                                    Objects.requireNonNullElse(request.getContentType(), ""));
-                    if (!contentType.getType().equalsIgnoreCase("application")
-                            || !contentType.getSubtype().equalsIgnoreCase("xml"))
-                        throw media("Content-Type");
-                } catch (IllegalArgumentException e) {
-                    throw media("Content-Type");
-                }
-            }
+                errors.invalid(
+                        "Операция не принимает тело запроса",
+                        "body",
+                        "$",
+                        "UNEXPECTED_BODY",
+                        "Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса");
+            if (write && request.body.length == 0)
+                errors.add(RequestException.missingBody(employee ? "employee" : "organization"));
+            errors.requireValid();
+            if (write) requireXmlContent(request);
             chain.doFilter(request, response);
         } catch (RequestException e) {
             response.setStatus(e.status);
@@ -147,25 +108,56 @@ public final class RequestGuard extends OncePerRequestFilter {
         }
     }
 
-    private static RequestException media(String field) {
-        return new RequestException(
-                415,
-                "UNSUPPORTED_MEDIA_TYPE",
-                "Use application/xml with no content encoding",
-                List.of(
-                        RequestException.detail(
-                                "header",
-                                field,
-                                "UNSUPPORTED_MEDIA_TYPE",
-                                "Use application/xml and identity encoding")));
+    private static void invalidType(RequestErrors errors, String location, String field) {
+        errors.invalid(
+                "Неверный параметр " + field,
+                location,
+                field,
+                "INVALID_ENUM",
+                "Допустимы только PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY");
     }
 
-    static void requireXmlAccept(String header) {
-        if (header == null) return;
+    private static void requireXmlContent(HttpServletRequest request) {
+        if (Collections.list(request.getHeaders("Content-Encoding")).stream()
+                .anyMatch(value -> !value.equalsIgnoreCase("identity")))
+            throw new RequestException(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Кодирование тела запроса не поддерживается",
+                    List.of(
+                            RequestException.detail(
+                                    "header",
+                                    "Content-Encoding",
+                                    "UNSUPPORTED_ENCODING",
+                                    "Используйте identity или не передавайте Content-Encoding")));
+        String value = request.getContentType();
+        if (value != null) {
+            try {
+                var type = MediaType.parseMediaType(value);
+                if (type.getType().equalsIgnoreCase("application")
+                        && type.getSubtype().equalsIgnoreCase("xml")) return;
+                value = type.getType() + "/" + type.getSubtype();
+            } catch (IllegalArgumentException e) {
+                // Use the same response for malformed and unsupported types.
+            }
+        }
+        String hint = "Отправьте XML с заголовком Content-Type: application/xml.";
+        if (value != null) hint += " Формат " + value + " не поддерживается";
+        throw new RequestException(
+                415,
+                "UNSUPPORTED_MEDIA_TYPE",
+                "Тип тела запроса не поддерживается",
+                List.of(
+                        RequestException.detail(
+                                "header", "Content-Type", "UNSUPPORTED_MEDIA_TYPE", hint)));
+    }
+
+    private static void requireXmlAccept(List<String> headers) {
+        if (headers.isEmpty()) return;
         int specificity = -1;
         double quality = 0;
         try {
-            for (var type : MediaType.parseMediaTypes(header)) {
+            for (var type : MediaType.parseMediaTypes(headers)) {
                 if (!type.includes(MediaType.APPLICATION_XML)) continue;
                 int s = type.isWildcardType() ? 0 : type.isWildcardSubtype() ? 1 : 2;
                 if (s > specificity) {
@@ -175,19 +167,19 @@ public final class RequestGuard extends OncePerRequestFilter {
             }
         } catch (IllegalArgumentException e) {
             throw RequestException.invalid(
-                    "header", "Accept", "INVALID_FORMAT", "Invalid Accept header");
+                    "header", "Accept", "INVALID_FORMAT", "Заголовок Accept имеет неверный формат");
         }
         if (quality <= 0)
             throw new RequestException(
                     406,
                     "NOT_ACCEPTABLE",
-                    "The available response format is application/xml",
+                    "Доступный формат ответа – application/xml",
                     List.of(
                             RequestException.detail(
                                     "header",
                                     "Accept",
                                     "UNSUPPORTED_MEDIA_TYPE",
-                                    "Allow application/xml")));
+                                    "Укажите application/xml или подходящую маску типа в Accept")));
     }
 
     private static void cors(HttpServletRequest request, HttpServletResponse response) {

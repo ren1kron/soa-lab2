@@ -11,6 +11,17 @@ import org.junit.jupiter.api.Test;
 
 class AcquireOrganizationServiceTest {
     @Test
+    void selfAcquisitionUsesContractConflictText() {
+        var service =
+                new AcquireOrganizationService(
+                        new InMemoryOrganizationsGateway(), new InMemoryAcquisitionJournal());
+        var error = assertThrows(ServiceException.class, () -> service.acquire(1, 1));
+        assertEquals("SELF_ACQUISITION", error.code);
+        assertEquals(
+                "Поглощающая и поглощаемая организации должны различаться", error.getMessage());
+    }
+
+    @Test
     void acquisitionTransfersEverySavedIdAndPreservesOrganizationFields() {
         var g = new InMemoryOrganizationsGateway();
         var journal = new InMemoryAcquisitionJournal();
@@ -65,12 +76,14 @@ class AcquireOrganizationServiceTest {
         var g = new InMemoryOrganizationsGateway();
         var journal = new InMemoryAcquisitionJournal();
         journal.snapshot = new AcquisitionSnapshot(1, 2, List.of(999L));
-        assertEquals(
-                "CONCURRENT_MODIFICATION",
+        var error =
                 assertThrows(
-                                ServiceException.class,
-                                () -> new AcquireOrganizationService(g, journal).acquire(1, 2))
-                        .code);
+                        ServiceException.class,
+                        () -> new AcquireOrganizationService(g, journal).acquire(1, 2));
+        assertEquals("CONCURRENT_MODIFICATION", error.code);
+        assertEquals(
+                "Работодатель сотрудника изменился во время поглощения. Проверьте его текущее назначение",
+                error.getMessage());
         assertNotNull(journal.snapshot);
     }
 

@@ -42,7 +42,10 @@ public final class OrganizationService {
                     long id =
                             organizations
                                     .firstIdByType(type)
-                                    .orElseThrow(ServiceException::notFound);
+                                    .orElseThrow(
+                                            () ->
+                                                    ServiceException.notFound(
+                                                            "Организация указанного типа не найдена"));
                     deleteEmpty(id);
                     return null;
                 });

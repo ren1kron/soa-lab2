@@ -55,16 +55,26 @@ class AcquisitionJournalIntegrationTest {
     @Test
     void sameSourceCannotBeAcquiredConcurrentlyOrByAnotherAcquirer() {
         try (var first = new PostgresAcquisitionJournal(source).lock(1, 2)) {
-            assertEquals(
-                    CONFLICT,
+            var error =
                     assertThrows(
-                                    ServiceException.class,
-                                    () -> new PostgresAcquisitionJournal(source).lock(1, 2))
-                            .kind);
+                            ServiceException.class,
+                            () -> new PostgresAcquisitionJournal(source).lock(1, 2));
+            assertEquals(CONFLICT, error.kind);
+            assertEquals("CONCURRENT_MODIFICATION", error.code);
+            assertEquals(
+                    "Для поглощаемой организации уже выполняется другая операция поглощения",
+                    error.getMessage());
+            assertTrue(error.details.isEmpty());
             first.save(List.of(10L));
         }
         try (var second = new PostgresAcquisitionJournal(source).lock(3, 2)) {
-            assertEquals(CONFLICT, assertThrows(ServiceException.class, second::load).kind);
+            var error = assertThrows(ServiceException.class, second::load);
+            assertEquals(CONFLICT, error.kind);
+            assertEquals("CONCURRENT_MODIFICATION", error.code);
+            assertEquals(
+                    "Есть незавершённая операция поглощения с другой поглощающей организацией",
+                    error.getMessage());
+            assertTrue(error.details.isEmpty());
         }
     }
 

@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useId, useRef, useState} from 'react';
 import {
   ApiError, display, fieldNames, fieldsFor, objectFields, organizationTypes,
   readRecord, request, text, valueAt, writeXml, type Entity, type XmlRecord
@@ -8,20 +8,22 @@ import QueryForm, {type Query} from './QueryForm';
 
 function ErrorMessage({error}: { error: unknown }) {
   if (!error) return null;
-  return <div className="error" role="alert">
+  return <div className="error" role="alert" tabIndex={-1}>
     <p>{error instanceof Error ? error.message : 'Не удалось выполнить операцию'}</p>
     {error instanceof ApiError && error.details.map(detail => <p key={detail}>{detail}</p>)}
   </div>;
 }
 
-function RecordTable({records, entity, busy, onEdit, onDelete}: {
+function RecordTable({records, entity, busy, editOnDoubleClick, onEdit, onDelete}: {
   records: XmlRecord[];
   entity: Entity;
   busy: boolean;
-  onEdit?: (record: XmlRecord) => void;
+  editOnDoubleClick?: boolean;
+  onEdit?: (record: XmlRecord, trigger: HTMLButtonElement) => void;
   onDelete?: (record: XmlRecord) => void;
 }) {
   const fields = fieldsFor(entity).filter(field => !objectFields.includes(field));
+  const editRow = editOnDoubleClick && !busy ? onEdit : undefined;
   return <div className="table-wrap">
     <table>
       <thead>
@@ -35,10 +37,15 @@ function RecordTable({records, entity, busy, onEdit, onDelete}: {
       {records.length === 0 && <tr>
           <td colSpan={fields.length + (onEdit ? 1 : 0)}>Записей нет</td>
       </tr>}
-      {records.map(record => <tr key={valueAt(record, 'id')}>
+      {records.map(record => <tr key={valueAt(record, 'id')} className={editRow ? 'editable-row' : undefined}
+                                 onDoubleClick={editRow && (event => {
+                                   if (!(event.target instanceof Element) || event.target.closest('.table-actions')) return;
+                                   const trigger = event.currentTarget.querySelector<HTMLButtonElement>('button[data-edit]');
+                                   if (trigger) editRow(record, trigger);
+                                 })}>
         {fields.map(field => <td key={field}>{display(record, field)}</td>)}
         {onEdit && <td className="table-actions">
-            <button disabled={busy} onClick={() => onEdit(record)}>Изменить</button>
+            <button data-edit disabled={busy} onClick={event => onEdit(record, event.currentTarget)}>Изменить</button>
             <button disabled={busy} onClick={() => onDelete?.(record)}>Удалить</button>
         </td>}
       </tr>)}
@@ -55,10 +62,14 @@ function Collection({entity}: { entity: Entity }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState('');
-  const [showForm, setShowForm] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [editing, setEditing] = useState<XmlRecord | null>(null);
   const [lookupId, setLookupId] = useState('');
   const [found, setFound] = useState<XmlRecord | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const refreshButton = useRef<HTMLButtonElement>(null);
+  const editHeadingId = useId();
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -90,6 +101,22 @@ function Collection({entity}: { entity: Entity }) {
     run(() => load());
   }, []);
 
+  useEffect(() => {
+    if (busy) return;
+    if (editing) {
+      const editor = dialog.current;
+      if (editor && !editor.open) {
+        editor.showModal();
+        editor.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
+      }
+      if (error) editor?.querySelector<HTMLElement>('[role="alert"]')?.focus();
+    } else if (editTrigger.current) {
+      const trigger = editTrigger.current;
+      editTrigger.current = null;
+      (trigger.isConnected ? trigger : refreshButton.current)?.focus();
+    }
+  }, [editing, busy, error]);
+
   const pages = loadedQuery ? (BigInt(total) + BigInt(loadedQuery.size) - 1n) / BigInt(loadedQuery.size) : 0n;
 
   function applyQuery(next: Query) {
@@ -101,23 +128,36 @@ function Collection({entity}: { entity: Entity }) {
     if (loadedQuery) applyQuery({...loadedQuery, page: String(BigInt(loadedQuery.page) + offset)});
   }
 
-  function edit(record: XmlRecord) {
+  function edit(record: XmlRecord, trigger: HTMLButtonElement) {
+    if (busy || editing) return;
+    editTrigger.current = trigger;
     run(async () => {
       const {root} = await request(`/${entity}/${encodeURIComponent(valueAt(record, 'id'))}`);
       setEditing(readRecord(root!));
-      setShowForm(true);
     });
   }
 
-  async function save(data: XmlRecord) {
+  function closeEditor() {
+    dialog.current?.close();
+    setEditing(null);
+  }
+
+  function cancelEdit() {
+    if (busy) return;
+    setError(null);
+    closeEditor();
+  }
+
+  async function save(data: XmlRecord, record: XmlRecord | null) {
     await run(async () => {
-      const path = editing ? `/${entity}/${encodeURIComponent(valueAt(editing, 'id'))}` : `/${entity}`;
+      const path = record ? `/${entity}/${encodeURIComponent(valueAt(record, 'id'))}` : `/${entity}`;
       const body = writeXml(entity === 'organizations' ? 'organization' : 'employee', data);
-      const {root} = await request(path, editing ? 'PUT' : 'POST', body);
+      const {root} = await request(path, record ? 'PUT' : 'POST', body);
       setFound(readRecord(root!));
-      setShowForm(false);
+      if (record) closeEditor();
+      else setShowCreateForm(false);
       setMessage('Запись сохранена');
-      await load();
+      await load(record ? loadedQuery ?? query : query);
     });
   }
 
@@ -144,24 +184,33 @@ function Collection({entity}: { entity: Entity }) {
       <h2>{entity === 'organizations' ? 'Организации' : 'Сотрудники'}</h2>
       <QueryForm entity={entity} query={query} busy={busy} onApply={applyQuery}/>
     </section>
-    <ErrorMessage error={error}/>
+    {!editing && <ErrorMessage error={error}/>}
     {message && <p className="success">{message}</p>}
-    {showForm && <EntityForm key={editing ? valueAt(editing, 'id') : 'new'} entity={entity}
-                             initial={editing} busy={busy} onSave={save} onCancel={() => setShowForm(false)}/>}
+    {showCreateForm && <section>
+      <EntityForm entity={entity} initial={null} busy={busy} onSave={data => save(data, null)}
+                  onCancel={() => setShowCreateForm(false)}/>
+    </section>}
+    {editing && <dialog className="edit-dialog" ref={dialog} aria-labelledby={editHeadingId}
+                        onCancel={event => {
+                          event.preventDefault();
+                          cancelEdit();
+                        }}>
+      <EntityForm entity={entity} initial={editing} busy={busy} headingId={editHeadingId}
+                  onSave={data => save(data, editing)} onCancel={cancelEdit}>
+        <ErrorMessage error={error}/>
+      </EntityForm>
+    </dialog>}
     <section>
       <div className="actions">
-        <button disabled={busy} onClick={() => {
-          setEditing(null);
-          setShowForm(true);
-        }}>
+        <button disabled={busy} onClick={() => setShowCreateForm(true)}>
           Добавить {entity === 'organizations' ? 'организацию' : 'сотрудника'}
         </button>
-        <button disabled={busy} onClick={() => run(() => load())}>Обновить список</button>
+        <button ref={refreshButton} disabled={busy} onClick={() => run(() => load())}>Обновить список</button>
       </div>
       {busy && <p>Загрузка</p>}
       {loadedQuery && <>
           <p>Всего записей {total} страница {loadedQuery.page} из {String(pages || 1n)}</p>
-          <RecordTable records={records} entity={entity} busy={busy} onEdit={edit} onDelete={remove}/>
+          <RecordTable records={records} entity={entity} busy={busy} editOnDoubleClick onEdit={edit} onDelete={remove}/>
           <div className="actions pagination">
               <button disabled={busy || BigInt(loadedQuery.page) <= 1n} onClick={() => changePage(-1n)}>Назад</button>
               <button disabled={busy || BigInt(loadedQuery.page) >= pages} onClick={() => changePage(1n)}>Вперед

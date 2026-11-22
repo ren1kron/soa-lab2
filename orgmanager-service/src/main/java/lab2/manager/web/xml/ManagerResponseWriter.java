@@ -44,12 +44,25 @@ public final class ManagerResponseWriter {
         else if (value instanceof Map<?, ?> map) {
             for (var entry : map.entrySet())
                 element(w, entry.getKey().toString(), entry.getValue());
-        } else if (value instanceof String
-                || value instanceof Number
+        } else if (value instanceof String text) {
+            writeText(w, text);
+        } else if (value instanceof Number
                 || value instanceof Enum<?>
                 || value instanceof java.time.temporal.TemporalAccessor)
             w.writeCharacters(value.toString());
         else for (var entry : model(value).entrySet()) element(w, entry.getKey(), entry.getValue());
         w.writeEndElement();
+    }
+
+    private static void writeText(XMLStreamWriter writer, String text) throws XMLStreamException {
+        int start = 0;
+        int carriageReturn;
+        while ((carriageReturn = text.indexOf('\r', start)) >= 0) {
+            writer.writeCharacters(text.substring(start, carriageReturn));
+            // XML parsers normalize literal carriage returns, including those in CRLF.
+            writer.writeEntityRef("#13");
+            start = carriageReturn + 1;
+        }
+        writer.writeCharacters(text.substring(start));
     }
 }

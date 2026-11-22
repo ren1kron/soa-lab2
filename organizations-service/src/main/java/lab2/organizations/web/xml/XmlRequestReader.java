@@ -59,14 +59,9 @@ public final class XmlRequestReader {
             object(true, "name", scalar(Kind.NAME, true), "organizationId", scalar(Kind.ID, false));
 
     public static <T> T read(byte[] body, Class<T> type) {
-        if (body.length == 0)
-            throw new RequestException(
-                    400,
-                    "MISSING_BODY",
-                    "An XML body is required",
-                    List.of(
-                            RequestException.detail(
-                                    "body", "$", "REQUIRED", "An XML body is required")));
+        boolean employee = type.getSimpleName().equals("EmployeeWrite");
+        String expected = employee ? "employee" : "organization";
+        if (body.length == 0) throw RequestException.missingBody(expected);
         Element root;
         try {
             var f = DocumentBuilderFactory.newInstance();
@@ -85,26 +80,53 @@ public final class XmlRequestReader {
             throw new RequestException(
                     400,
                     "MALFORMED_XML",
-                    "Malformed or prohibited XML",
+                    "XML-тело не удалось разобрать",
                     List.of(
                             RequestException.detail(
                                     "body",
                                     "$",
                                     "INVALID_FORMAT",
-                                    "Expected well-formed XML without DTDs")));
+                                    "XML должен содержать один корректно закрытый корневой элемент")));
         }
-        boolean employee = type.getSimpleName().equals("EmployeeWrite");
-        String expected = employee ? "employee" : "organization";
-        var errors = new ArrayList<ErrorDetail>();
         if (!root.getTagName().equals(expected) || root.getNamespaceURI() != null)
-            errors.add(
-                    RequestException.detail(
-                            "body", "$", "INVALID_FORMAT", "Expected root element " + expected));
+            throw new RequestException(
+                    422,
+                    "VALIDATION_FAILED",
+                    "Неверный корневой элемент",
+                    List.of(
+                            RequestException.detail(
+                                    "body",
+                                    "$",
+                                    "INVALID_FORMAT",
+                                    "Корневой элемент XML должен называться " + expected)));
+        var errors = new ArrayList<ErrorDetail>();
         Map<String, Object> value = validate(root, employee ? EMPLOYEE : ORGANIZATION, "", errors);
         if (!errors.isEmpty())
             throw new RequestException(
-                    422, "VALIDATION_FAILED", "XML content violates the contract", errors);
+                    422, "VALIDATION_FAILED", validationMessage(errors, employee), errors);
         return XmlModelMapper.JSON.convertValue(value, type);
+    }
+
+    private static String validationMessage(List<ErrorDetail> errors, boolean employee) {
+        if (errors.size() > 1)
+            return employee
+                    ? "Поля сотрудника не прошли проверку"
+                    : "Несколько полей организации не прошли проверку";
+        var error = errors.get(0);
+        return switch (error.getCode()) {
+            case "INVALID_ENUM" -> "Неизвестный тип организации";
+            case "READ_ONLY_FIELD" -> "Передано поле, управляемое сервером";
+            case "UNKNOWN_FIELD" -> "Неизвестное поле тела";
+            case "DUPLICATE_FIELD" -> "Одиночное поле повторяется";
+            case "INVALID_TYPE" ->
+                    error.getField().startsWith("officialAddress.town.")
+                            ? "Неверная вложенная координата"
+                            : "Поле имеет неверный тип";
+            default ->
+                    employee
+                            ? "Поля сотрудника не прошли проверку"
+                            : "Поля организации не прошли проверку";
+        };
     }
 
     private static Map<String, Object> validate(
@@ -122,29 +144,44 @@ public final class XmlRequestReader {
                                     "body",
                                     path.isEmpty() ? "$" : path,
                                     "INVALID_TYPE",
-                                    "Objects contain elements, not text"));
+                                    "Вложенный объект должен содержать XML-элементы"));
                 continue;
             }
             String name = child.getTagName(), field = path.isEmpty() ? name : path + "." + name;
             Rule childRule = rule.children.get(name);
             if (childRule == null || child.getNamespaceURI() != null) {
+                boolean readOnly =
+                        child.getNamespaceURI() == null
+                                && path.isEmpty()
+                                && (name.equals("id")
+                                        || (rule == ORGANIZATION
+                                                && Set.of("creationDate", "employeeCount")
+                                                        .contains(name)));
+                String hint =
+                        readOnly
+                                ? (name.equals("id")
+                                        ? "Сервер назначает ID автоматически. Удалите поле id из тела запроса"
+                                        : "Поле "
+                                                + field
+                                                + " заполняет сервер. Удалите его из тела запроса")
+                                : "Поле "
+                                        + field
+                                        + " не поддерживается. Удалите его из тела запроса";
                 errors.add(
                         RequestException.detail(
                                 "body",
                                 field,
-                                path.isEmpty()
-                                                && (Set.of("id", "creationDate").contains(name)
-                                                        || (rule == ORGANIZATION
-                                                                && name.equals("employeeCount")))
-                                        ? "READ_ONLY_FIELD"
-                                        : "UNKNOWN_FIELD",
-                                "Element is not writable in this object"));
+                                readOnly ? "READ_ONLY_FIELD" : "UNKNOWN_FIELD",
+                                hint));
                 continue;
             }
             if (!seen.add(name))
                 errors.add(
                         RequestException.detail(
-                                "body", field, "DUPLICATE_FIELD", "Singleton element is repeated"));
+                                "body",
+                                field,
+                                "DUPLICATE_FIELD",
+                                "XML-тело должно содержать ровно один элемент " + field));
             if (childRule.kind == Kind.OBJECT)
                 result.put(name, validate(child, childRule, field, errors));
             else {
@@ -155,7 +192,10 @@ public final class XmlRequestReader {
                 if (nested)
                     errors.add(
                             RequestException.detail(
-                                    "body", field, "INVALID_TYPE", "Expected scalar text"));
+                                    "body",
+                                    field,
+                                    "INVALID_TYPE",
+                                    "Элемент должен содержать текстовое значение"));
                 else
                     try {
                         result.put(
@@ -167,21 +207,46 @@ public final class XmlRequestReader {
                                         "body",
                                         field,
                                         ScalarValueRules.errorCode(e),
-                                        e.getMessage().split(":", 2)[1]));
+                                        scalarMessage(rule, childRule.kind, field, e)));
                     }
             }
         }
         rule.children.forEach(
                 (name, r) -> {
-                    if (r.required && !seen.contains(name))
-                        errors.add(
-                                RequestException.detail(
-                                        "body",
-                                        path.isEmpty() ? name : path + "." + name,
-                                        "REQUIRED",
-                                        "Required element is missing"));
+                    if (r.required && !seen.contains(name)) {
+                        String field = path.isEmpty() ? name : path + "." + name;
+                        String hint =
+                                r.kind == Kind.INT || r.kind == Kind.LONG
+                                        ? "Отсутствует обязательная координата "
+                                                + name
+                                                + " типа "
+                                                + (r.kind == Kind.INT ? "int32" : "int64")
+                                        : "Передайте обязательное поле " + field;
+                        errors.add(RequestException.detail("body", field, "REQUIRED", hint));
+                    }
                 });
         return result;
+    }
+
+    private static String scalarMessage(
+            Rule parent, Kind kind, String field, IllegalArgumentException error) {
+        return switch (kind) {
+            case NAME ->
+                    parent == EMPLOYEE
+                            ? "name не может быть пустой строкой"
+                            : "name обязателен и должен содержать минимум один символ";
+            case DOUBLE -> "annualTurnover должен быть конечным числом строго больше 0";
+            case ID ->
+                    "organizationId должен быть целым числом от 1 до 9223372036854775807. "
+                            + "Если работодателя нет, не передавайте этот элемент";
+            case INT, LONG ->
+                    "Координата "
+                            + field.substring(field.lastIndexOf('.') + 1)
+                            + " должна быть целым числом в диапазоне "
+                            + (kind == Kind.INT ? "int32" : "int64")
+                            + ". Дробные значения недопустимы";
+            default -> ScalarValueRules.errorMessage(error);
+        };
     }
 
     private static void attributes(Element e, String path, List<ErrorDetail> errors) {
@@ -193,7 +258,7 @@ public final class XmlRequestReader {
                                 "body",
                                 path.isEmpty() ? "$" : path,
                                 "INVALID_FORMAT",
-                                "Attributes, including xsi:nil, are unsupported"));
+                                "Удалите атрибуты XML, включая xsi:nil"));
         }
     }
 }

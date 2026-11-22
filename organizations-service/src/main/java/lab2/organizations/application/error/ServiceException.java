@@ -17,15 +17,14 @@ public final class ServiceException extends RuntimeException {
         this.code = code;
     }
 
-    public static ServiceException notFound() {
-        return new ServiceException(
-                Kind.NOT_FOUND, "NOT_FOUND", "Organization, employee, or employer was not found");
+    public static ServiceException notFound(String message) {
+        return new ServiceException(Kind.NOT_FOUND, "NOT_FOUND", message);
     }
 
     public static ServiceException organizationNotEmpty() {
         return new ServiceException(
                 Kind.CONFLICT,
                 "ORGANIZATION_NOT_EMPTY",
-                "Cannot delete an organization with employees");
+                "Нельзя удалить организацию, пока в ней есть сотрудники");
     }
 }

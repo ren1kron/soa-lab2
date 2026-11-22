@@ -86,8 +86,8 @@ export default function QueryForm({entity, query, busy, onApply}: {
         </select>
         <select aria-label={`Направление ${index + 1}`} value={sort.descending ? 'desc' : 'asc'}
                 onChange={event => updateSort(index, {descending: event.target.value === 'desc'})}>
-          <option value="asc">По возрастанию</option>
-          <option value="desc">По убыванию</option>
+          <option value="asc">{sort.field === 'type' ? 'По алфавиту (A–Z)' : 'По возрастанию'}</option>
+          <option value="desc">{sort.field === 'type' ? 'По алфавиту (Z–A)' : 'По убыванию'}</option>
         </select>
         <button type="button" disabled={sorts.length === 1}
                 onClick={() => setSorts(sorts.filter((_, i) => i !== index))}>Убрать

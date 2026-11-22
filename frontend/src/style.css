@@ -177,6 +177,50 @@ th {
     font-size: 13px;
 }
 
+@media (hover: hover) and (pointer: fine) {
+    .editable-row > td:not(.table-actions) {
+        cursor: pointer;
+    }
+
+    .editable-row:hover > td:not(.table-actions) {
+        background: #f2f6fa;
+    }
+}
+
+.edit-dialog {
+    width: min(48rem, calc(100% - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: white;
+    color: inherit;
+}
+
+.edit-dialog::backdrop {
+    background: rgb(0 0 0 / 35%);
+}
+
+.edit-dialog .form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
+.edit-dialog .error:focus-visible {
+    outline: 2px solid #365f86;
+    outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+    .edit-dialog .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .edit-dialog .actions button {
+        min-height: 44px;
+    }
+}
+
 .pagination {
     margin-top: 16px;
 }

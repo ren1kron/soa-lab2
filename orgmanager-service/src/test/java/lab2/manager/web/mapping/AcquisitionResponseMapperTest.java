@@ -2,9 +2,12 @@ package lab2.manager.web.mapping;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
+import javax.xml.parsers.DocumentBuilderFactory;
 import lab2.manager.application.acquisition.AcquisitionOutcome;
 import lab2.manager.generated.upstream.model.*;
+import lab2.manager.web.xml.ManagerResponseWriter;
 import org.junit.jupiter.api.Test;
 
 class AcquisitionResponseMapperTest {
@@ -21,7 +24,7 @@ class AcquisitionResponseMapperTest {
     void preservesNestedFieldsAndFullWidthIntegersAcrossContracts() {
         var input =
                 organization()
-                        .employeeCount(Long.MAX_VALUE)
+                        .employeeCount(17L)
                         .annualTurnover(42.5)
                         .type(OrganizationType.PUBLIC)
                         .officialAddress(
@@ -47,6 +50,20 @@ class AcquisitionResponseMapperTest {
         assertEquals(Long.MIN_VALUE, output.getOfficialAddress().getTown().getX());
         assertEquals(Long.MAX_VALUE, output.getOfficialAddress().getTown().getY());
         assertEquals("Town", output.getOfficialAddress().getTown().getName());
+    }
+
+    @Test
+    void preservesCarriageReturnsInOrganizationXml() throws Exception {
+        String name = " North\r\n& <South>\r ";
+        var result =
+                AcquisitionResponseMapper.response(
+                        new AcquisitionOutcome(organization().name(name), 2, 0));
+        var xml = ManagerResponseWriter.write(result, "acquisition");
+        var document =
+                DocumentBuilderFactory.newInstance()
+                        .newDocumentBuilder()
+                        .parse(new ByteArrayInputStream(xml));
+        assertEquals(name, document.getElementsByTagName("name").item(0).getTextContent());
     }
 
     @Test

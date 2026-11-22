@@ -5,8 +5,6 @@ import java.util.*;
 import lab2.organizations.application.query.CollectionQuery;
 import lab2.organizations.application.query.CollectionQuery.Condition;
 import lab2.organizations.application.query.CollectionQuery.Order;
-import lab2.organizations.generated.model.ErrorDetail;
-import lab2.organizations.web.error.RequestException;
 import lab2.organizations.web.validation.ScalarValueRules.Kind;
 
 public final class CollectionQueryParser {
@@ -37,49 +35,37 @@ public final class CollectionQueryParser {
     }
 
     public static CollectionQuery parse(Map<String, String[]> params, boolean employees) {
-        var errors = new ArrayList<ErrorDetail>();
-        params.forEach(
-                (key, values) -> {
-                    if (!Set.of("page", "size", "sort", "filter").contains(key))
-                        errors.add(
-                                RequestException.detail(
-                                        "query", key, "UNKNOWN_FIELD", "Unknown query parameter"));
-                    if (values.length != 1)
-                        errors.add(
-                                RequestException.detail(
-                                        "query",
-                                        key,
-                                        "DUPLICATE_PARAMETER",
-                                        "Pass this parameter once"));
-                });
+        var errors = new RequestErrors();
+        errors.checkParameters(params, Set.of("page", "size", "sort", "filter"));
         BigInteger page = BigInteger.ONE;
         int size = 20;
         try {
             page = positive(first(params, "page", "1"));
         } catch (IllegalArgumentException e) {
-            errors.add(
-                    RequestException.detail(
-                            "query",
-                            "page",
-                            "OUT_OF_RANGE",
-                            "page must be a decimal integer >= 1"));
+            errors.invalid(
+                    "Неверные параметры пагинации",
+                    "query",
+                    "page",
+                    "OUT_OF_RANGE",
+                    "page должен быть целым числом не меньше 1");
         }
         try {
             var s = positive(first(params, "size", "20"));
             if (s.compareTo(BigInteger.valueOf(100)) > 0) throw new IllegalArgumentException();
             size = s.intValueExact();
         } catch (IllegalArgumentException | ArithmeticException e) {
-            errors.add(
-                    RequestException.detail(
-                            "query",
-                            "size",
-                            "OUT_OF_RANGE",
-                            "size must be an integer from 1 to 100"));
+            errors.invalid(
+                    "Неверные параметры пагинации",
+                    "query",
+                    "size",
+                    "OUT_OF_RANGE",
+                    "size должен быть целым числом от 1 до 100 включительно");
         }
         Map<String, Field> fields = fields(employees);
         var orders = new ArrayList<Order>();
         var seen = new HashMap<String, Boolean>();
-        String[] sorts = first(params, "sort", "id").split(",", -1);
+        String sort = first(params, "sort", "id");
+        String[] sorts = sort.split(",", -1);
         for (int i = 0; i < sorts.length; i++) {
             String term = sorts[i], field = term.startsWith("-") ? term.substring(1) : term;
             boolean desc = term.startsWith("-");
@@ -89,13 +75,7 @@ public final class CollectionQueryParser {
                 code = "UNKNOWN_FIELD";
             else if (seen.containsKey(field))
                 code = seen.get(field) == desc ? "DUPLICATE_SORT" : "CONFLICTING_SORT";
-            if (code != null)
-                errors.add(
-                        RequestException.detail(
-                                "query",
-                                "sort[" + i + "]",
-                                code,
-                                "Sort by a declared field once, optionally prefixed with -"));
+            if (code != null) sortError(errors, sort, i, term, field, code);
             else {
                 orders.add(new Order(field, desc));
                 seen.put(field, desc);
@@ -109,27 +89,86 @@ public final class CollectionQueryParser {
                 try {
                     conditions.add(filter(terms[i], fields));
                 } catch (IllegalArgumentException e) {
+                    String reason = ScalarValueRules.errorCode(e);
+                    String summary =
+                            switch (reason) {
+                                case "UNKNOWN_OPERATOR" -> "Оператор фильтра не подходит полю";
+                                case "UNKNOWN_FIELD" -> "Неизвестное поле фильтра";
+                                case "INVALID_TYPE",
+                                                "OUT_OF_RANGE",
+                                                "INVALID_ENUM",
+                                                "TOO_SHORT",
+                                                "TOO_LONG" ->
+                                        "Значение фильтра имеет неверный тип";
+                                default -> "Некорректный фильтр";
+                            };
                     errors.add(
-                            RequestException.detail(
-                                    "query",
-                                    "filter[" + i + "]",
-                                    e.getMessage().contains(":")
-                                            ? ScalarValueRules.errorCode(e)
-                                            : "INVALID_FORMAT",
-                                    e.getMessage()));
+                            "INVALID_FILTER",
+                            summary,
+                            "query",
+                            "filter[" + i + "]",
+                            reason,
+                            ScalarValueRules.errorMessage(e));
                 }
             }
         }
-        if (!errors.isEmpty()) {
-            String code =
-                    errors.stream().allMatch(e -> e.getField().startsWith("sort["))
-                            ? "INVALID_SORT"
-                            : errors.stream().allMatch(e -> e.getField().startsWith("filter["))
-                                    ? "INVALID_FILTER"
-                                    : "INVALID_REQUEST";
-            throw new RequestException(400, code, "Invalid collection parameters", errors);
-        }
+        errors.requireValid();
         return new CollectionQuery(page, size, orders, conditions);
+    }
+
+    private static void sortError(
+            RequestErrors errors, String sort, int index, String term, String field, String code) {
+        String summary;
+        String hint;
+        switch (code) {
+            case "UNKNOWN_FIELD" -> {
+                summary = "Неизвестное поле сортировки";
+                hint =
+                        "По полю "
+                                + field
+                                + " сортировать нельзя. Выберите поле из списка допустимых значений sort";
+            }
+            case "DUPLICATE_SORT" -> {
+                summary = "Поле сортировки повторяется";
+                hint = "Поле " + field + " указано в sort дважды. Оставьте его только один раз";
+            }
+            case "CONFLICTING_SORT" -> {
+                summary = "Противоречащие направления сортировки";
+                hint =
+                        "Для поля "
+                                + field
+                                + " указаны два направления сортировки. Выберите "
+                                + field
+                                + " или -"
+                                + field;
+            }
+            default -> {
+                if (term.isEmpty()) {
+                    summary = "Пустой элемент сортировки";
+                    hint =
+                            index == 1
+                                    ? "В sort="
+                                            + sort
+                                            + " пропущено поле после первой запятой. Удалите лишнюю запятую"
+                                    : "Укажите поле в позиции "
+                                            + (index + 1)
+                                            + " или удалите лишнюю запятую";
+                } else {
+                    summary = "Некорректное направление сортировки";
+                    String name = term.replaceFirst("^-+", "");
+                    hint =
+                            term.startsWith("--") && !name.isEmpty()
+                                    ? "В sort="
+                                            + sort
+                                            + " разрешён только один ведущий минус: используйте "
+                                            + name
+                                            + " или -"
+                                            + name
+                                    : "Укажите допустимое поле без пробелов, с одним ведущим минусом для убывания";
+                }
+            }
+        }
+        errors.add("INVALID_SORT", summary, "query", "sort[" + index + "]", code, hint);
     }
 
     private static String first(Map<String, String[]> map, String key, String fallback) {
@@ -146,16 +185,20 @@ public final class CollectionQueryParser {
     private static Condition filter(String term, Map<String, Field> fields) {
         String[] parts = term.split(":", 3);
         if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty())
-            throw new IllegalArgumentException("INVALID_FORMAT:Expected field:operator:value");
+            throw new IllegalArgumentException(
+                    "INVALID_FORMAT:Фильтр должен иметь вид поле:оператор:значение, например name:eq:Иван");
         var field = fields.get(parts[0]);
-        if (field == null) throw new IllegalArgumentException("UNKNOWN_FIELD:Unknown filter field");
+        if (field == null)
+            throw new IllegalArgumentException(
+                    "UNKNOWN_FIELD:Поле " + parts[0] + " недоступно для фильтрации");
         String op = parts[1], value = parts[2], path = parts[0];
         if (op.equals("isNull")) {
             if (!field.nullable)
                 throw new IllegalArgumentException(
-                        "INVALID_OPERATOR:isNull requires an optional field or descendant");
+                        "UNKNOWN_OPERATOR:Оператор isNull доступен для необязательных полей и их вложенных полей");
             if (!Set.of("true", "false").contains(value))
-                throw new IllegalArgumentException("INVALID_TYPE:isNull requires true or false");
+                throw new IllegalArgumentException(
+                        "INVALID_TYPE:Укажите true или false для isNull");
             return new Condition(path, op, List.of(Boolean.parseBoolean(value)));
         }
         boolean string = Set.of(Kind.NAME, Kind.TEXT, Kind.ZIP).contains(field.kind);
@@ -165,18 +208,39 @@ public final class CollectionQueryParser {
                         : Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in");
         if (field.kind == Kind.OBJECT || !allowed.contains(op))
             throw new IllegalArgumentException(
-                    "INVALID_OPERATOR:Operator is unavailable for this field");
+                    "UNKNOWN_OPERATOR:Оператор "
+                            + op
+                            + " не подходит для поля "
+                            + path
+                            + ". "
+                            + (field.kind == Kind.OBJECT
+                                    ? "Используйте isNull"
+                                    : string
+                                            ? "Используйте eq, ne, contains, startsWith или in"
+                                            : "Используйте eq, ne, gt, gte, lt, lte или in"));
         if (op.equals("contains") || op.equals("startsWith")) {
             if (value.isEmpty())
-                throw new IllegalArgumentException("TOO_SHORT:Search text must not be empty");
+                throw new IllegalArgumentException("TOO_SHORT:Укажите непустую строку поиска");
             ScalarValueRules.parse(field.kind, value);
             return new Condition(path, op, List.of(value));
         }
         var values = new ArrayList<Object>();
         for (String item : op.equals("in") ? value.split("\\|", -1) : new String[] {value}) {
             if (op.equals("in") && item.isEmpty())
-                throw new IllegalArgumentException("INVALID_FORMAT:in requires nonempty values");
-            values.add(ScalarValueRules.parse(field.kind, item));
+                throw new IllegalArgumentException(
+                        "INVALID_FORMAT:Оператор in требует непустые значения");
+            try {
+                values.add(ScalarValueRules.parse(field.kind, item));
+            } catch (IllegalArgumentException e) {
+                if (field.kind == Kind.ID && ScalarValueRules.errorCode(e).equals("INVALID_TYPE"))
+                    throw new IllegalArgumentException(
+                            "INVALID_TYPE:В "
+                                    + term
+                                    + " значение "
+                                    + path
+                                    + " должно быть положительным десятичным int64");
+                throw e;
+            }
         }
         return new Condition(path, op, values);
     }

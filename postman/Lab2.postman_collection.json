@@ -1,0 +1,3864 @@
+{
+  "info": {
+    "name": "SOA Lab 2 · XML contract demo",
+    "description": "Select Helios, then run Preflight. Live contract errors compares the backend XML to the saved OpenAPI examples. Guided demo creates and removes its own fixtures; use an empty demo environment and run the requests in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const expected = pm.variables.get('lab2_expected');",
+          "const xml = require('xml2js');",
+          "let passed = true;",
+          "",
+          "function check(name, assert) {",
+          "    pm.test(name, () => {",
+          "        try { assert(); }",
+          "        catch (error) { passed = false; throw error; }",
+          "    });",
+          "}",
+          "",
+          "function parseXml(body) {",
+          "    let parsed;",
+          "    xml.parseString(body, { explicitArray: true, trim: false }, (error, value) => {",
+          "        if (error) throw error;",
+          "        parsed = value;",
+          "    });",
+          "    return parsed;",
+          "}",
+          "",
+          "function find(root, path) {",
+          "    return path.split('.').reduce((node, key) => {",
+          "        const child = node?.[key];",
+          "        return Array.isArray(child) ? child[0] : child;",
+          "    }, root);",
+          "}",
+          "",
+          "const statuses = [].concat(expected.status);",
+          "check('HTTP status is ' + statuses.join(' or '), () => {",
+          "    pm.expect(statuses).to.include(pm.response.code);",
+          "});",
+          "",
+          "let actual;",
+          "if (statuses.includes(pm.response.code)) {",
+          "    if (pm.response.code === 204) {",
+          "        check('204 has an empty response body', () => pm.expect(pm.response.text()).to.equal(''));",
+          "    } else {",
+          "        check('Response is application/xml', () => {",
+          "            const type = (pm.response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();",
+          "            pm.expect(type).to.equal('application/xml');",
+          "        });",
+          "        check('Body is well-formed XML', () => {",
+          "            actual = parseXml(pm.response.text());",
+          "            pm.expect(actual).to.be.an('object');",
+          "        });",
+          "        if (actual && expected.example) {",
+          "            check('XML matches the OpenAPI example exactly', () => {",
+          "                pm.expect(actual).to.deep.equal(parseXml(expected.example));",
+          "            });",
+          "        }",
+          "        if (actual && expected.roots) {",
+          "            const root = Object.keys(actual)[0];",
+          "            const expectedRoot = expected.roots[String(pm.response.code)];",
+          "            check('XML root is <' + expectedRoot + '>', () => pm.expect(root).to.equal(expectedRoot));",
+          "        }",
+          "        if (actual && pm.response.code === 404 && expected.clear) {",
+          "            check('HTTP 404 has an XML NOT_FOUND error', () => {",
+          "                pm.expect(find(actual, 'error.code')).to.equal('NOT_FOUND');",
+          "                pm.expect(find(actual, 'error.details')).to.exist;",
+          "            });",
+          "        }",
+          "        for (const [path, value] of Object.entries(expected.fields || {})) {",
+          "            check(path + ' matches', () => {",
+          "                pm.expect(find(actual, path)).to.equal(pm.variables.replaceIn(value));",
+          "            });",
+          "        }",
+          "        for (const path of expected.absent || []) {",
+          "            check(path + ' is omitted', () => pm.expect(find(actual, path)).to.be.undefined);",
+          "        }",
+          "        for (const path of expected.nonnegative || []) {",
+          "            check(path + ' is a nonnegative integer', () => {",
+          "                pm.expect(find(actual, path)).to.match(/^[0-9]+$/);",
+          "            });",
+          "        }",
+          "    }",
+          "    for (const [name, value] of Object.entries(expected.headers || {})) {",
+          "        check(name + ' matches', () => pm.expect(pm.response.headers.get(name)).to.equal(value));",
+          "    }",
+          "    if (expected.capture && actual) {",
+          "        check('Capture values from the demo fixture', () => {",
+          "            const values = {};",
+          "            for (const [key, path] of Object.entries(expected.capture)) {",
+          "                const value = find(actual, path);",
+          "                pm.expect(value).to.be.a('string').and.not.empty;",
+          "                if (key !== 'demo_creation_date') {",
+          "                    pm.expect(value).to.match(/^[1-9][0-9]{0,18}$/);",
+          "                    pm.expect(value.length < 19 || value <= '9223372036854775807').to.be.true;",
+          "                }",
+          "                values[key] = value;",
+          "            }",
+          "            if (passed) {",
+          "                for (const [key, value] of Object.entries(values)) pm.environment.set(key, value);",
+          "            }",
+          "        });",
+          "    }",
+          "}",
+          "if (passed && expected.clear) {",
+          "    for (const key of expected.clear) pm.environment.unset(key);",
+          "    if (!['demo_org_a', 'demo_org_b', 'demo_employee'].some(key => pm.environment.get(key))) {",
+          "        for (const key of ['demo_prefix', 'demo_origin', 'demo_creation_date']) pm.environment.unset(key);",
+          "    }",
+          "}",
+          "if (!passed && expected.guided) pm.execution.setNextRequest(null);"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Preflight",
+      "item": [
+        {
+          "name": "Organizations HTTPS and pagination",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": "{{organizations_base_url}}/organizations?page=1&size=1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"organizations\"}, \"headers\": {\"X-Page\": \"1\", \"X-Page-Size\": \"1\"}});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 · Manager reaches organizations over HTTPS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=1",
+            "description": "The documented missing organization error shows WildFly reached Payara. This request leaves data intact."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('lab2_expected', {\"status\": 404, \"example\": \"<error>\\n  <code>NOT_FOUND</code>\\n  <message>Организация с указанным ID не найдена</message>\\n  <details/>\\n</error>\"});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Contract · missingOrganization",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=1",
+                "description": "The documented missing organization error shows WildFly reached Payara. This request leaves data intact."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "xml",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/xml"
+                }
+              ],
+              "body": "<error>\n  <code>NOT_FOUND</code>\n  <message>Организация с указанным ID не найдена</message>\n  <details/>\n</error>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Live contract errors",
+      "item": [
+        {
+          "name": "Organizations and employees",
+          "item": [
+            {
+              "name": "400 · Unknown query parameter",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?unexpected=1",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неизвестный параметр запроса</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>unexpected</field>\\n      <code>UNKNOWN_FIELD</code>\\n      <message>Эта операция не поддерживает параметр unexpected. Удалите его из запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unknownQueryParameter",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?unexpected=1",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неизвестный параметр запроса</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>unexpected</field>\n      <code>UNKNOWN_FIELD</code>\n      <message>Эта операция не поддерживает параметр unexpected. Удалите его из запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Unknown sort field",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=name,salary",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_SORT</code>\\n  <message>Неизвестное поле сортировки</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort[1]</field>\\n      <code>UNKNOWN_FIELD</code>\\n      <message>По полю salary сортировать нельзя. Выберите поле из списка допустимых значений sort</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unknownSortField",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=name,salary",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_SORT</code>\n  <message>Неизвестное поле сортировки</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort[1]</field>\n      <code>UNKNOWN_FIELD</code>\n      <message>По полю salary сортировать нельзя. Выберите поле из списка допустимых значений sort</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Malformed sort direction",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=--name",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_SORT</code>\\n  <message>Некорректное направление сортировки</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort[0]</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>В sort=--name разрешён только один ведущий минус: используйте name или -name</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · malformedSort",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=--name",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_SORT</code>\n  <message>Некорректное направление сортировки</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort[0]</field>\n      <code>INVALID_FORMAT</code>\n      <message>В sort=--name разрешён только один ведущий минус: используйте name или -name</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Empty sort term",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=name,,id",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_SORT</code>\\n  <message>Пустой элемент сортировки</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort[1]</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>В sort=name,,id пропущено поле после первой запятой. Удалите лишнюю запятую</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · emptySortTerm",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=name,,id",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_SORT</code>\n  <message>Пустой элемент сортировки</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort[1]</field>\n      <code>INVALID_FORMAT</code>\n      <message>В sort=name,,id пропущено поле после первой запятой. Удалите лишнюю запятую</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Duplicate sort field",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=name,name",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_SORT</code>\\n  <message>Поле сортировки повторяется</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort[1]</field>\\n      <code>DUPLICATE_SORT</code>\\n      <message>Поле name указано в sort дважды. Оставьте его только один раз</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · duplicateSort",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=name,name",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_SORT</code>\n  <message>Поле сортировки повторяется</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort[1]</field>\n      <code>DUPLICATE_SORT</code>\n      <message>Поле name указано в sort дважды. Оставьте его только один раз</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Conflicting sort direction",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=name,-name",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_SORT</code>\\n  <message>Противоречащие направления сортировки</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort[1]</field>\\n      <code>CONFLICTING_SORT</code>\\n      <message>Для поля name указаны два направления сортировки. Выберите name или -name</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · conflictingSort",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=name,-name",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_SORT</code>\n  <message>Противоречащие направления сортировки</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort[1]</field>\n      <code>CONFLICTING_SORT</code>\n      <message>Для поля name указаны два направления сортировки. Выберите name или -name</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Repeated sort parameter",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?sort=name&sort=-id",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Параметр sort передан несколько раз</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>sort</field>\\n      <code>DUPLICATE_PARAMETER</code>\\n      <message>Используйте sort=name,-id вместо sort=name&amp;sort=-id</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · repeatedSort",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?sort=name&sort=-id",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Параметр sort передан несколько раз</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>sort</field>\n      <code>DUPLICATE_PARAMETER</code>\n      <message>Используйте sort=name,-id вместо sort=name&amp;sort=-id</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid page and size",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?page=0&size=101",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверные параметры пагинации</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>page</field>\\n      <code>OUT_OF_RANGE</code>\\n      <message>page должен быть целым числом не меньше 1</message>\\n    </detail>\\n    <detail>\\n      <location>query</location>\\n      <field>size</field>\\n      <code>OUT_OF_RANGE</code>\\n      <message>size должен быть целым числом от 1 до 100 включительно</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidPagination",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?page=0&size=101",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверные параметры пагинации</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>page</field>\n      <code>OUT_OF_RANGE</code>\n      <message>page должен быть целым числом не меньше 1</message>\n    </detail>\n    <detail>\n      <location>query</location>\n      <field>size</field>\n      <code>OUT_OF_RANGE</code>\n      <message>size должен быть целым числом от 1 до 100 включительно</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Unsupported filter operator",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?filter=name:gt:x",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_FILTER</code>\\n  <message>Оператор фильтра не подходит полю</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>filter[0]</field>\\n      <code>UNKNOWN_OPERATOR</code>\\n      <message>Оператор gt не подходит для поля name. Используйте eq, ne, contains, startsWith или in</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidFilter",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?filter=name:gt:x",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_FILTER</code>\n  <message>Оператор фильтра не подходит полю</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>filter[0]</field>\n      <code>UNKNOWN_OPERATOR</code>\n      <message>Оператор gt не подходит для поля name. Используйте eq, ne, contains, startsWith или in</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Malformed filter",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?filter=name:eq",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_FILTER</code>\\n  <message>Некорректный фильтр</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>filter[0]</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>Фильтр должен иметь вид поле:оператор:значение, например name:eq:Иван</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · malformedFilter",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?filter=name:eq",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_FILTER</code>\n  <message>Некорректный фильтр</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>filter[0]</field>\n      <code>INVALID_FORMAT</code>\n      <message>Фильтр должен иметь вид поле:оператор:значение, например name:eq:Иван</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid filter value",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?filter=id:eq:abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_FILTER</code>\\n  <message>Значение фильтра имеет неверный тип</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>filter[0]</field>\\n      <code>INVALID_TYPE</code>\\n      <message>В id:eq:abc значение id должно быть положительным десятичным int64</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidFilterValue",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations?filter=id:eq:abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_FILTER</code>\n  <message>Значение фильтра имеет неверный тип</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>filter[0]</field>\n      <code>INVALID_TYPE</code>\n      <message>В id:eq:abc значение id должно быть положительным десятичным int64</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid organization ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр id</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>id</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_id",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр id</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>id</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid employee ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр employeeId</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>employeeId</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_employeeId",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees/abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр employeeId</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>employeeId</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid type threshold",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/count?typeGreaterThan=abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр typeGreaterThan</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>typeGreaterThan</field>\\n      <code>INVALID_ENUM</code>\\n      <message>Допустимы только PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_typeGreaterThan",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/count?typeGreaterThan=abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр typeGreaterThan</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>typeGreaterThan</field>\n      <code>INVALID_ENUM</code>\n      <message>Допустимы только PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Missing type threshold",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/count",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Отсутствует обязательный параметр typeGreaterThan</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>typeGreaterThan</field>\\n      <code>REQUIRED</code>\\n      <message>Передайте обязательный query-параметр typeGreaterThan</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missing_typeGreaterThan",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/count",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Отсутствует обязательный параметр typeGreaterThan</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>typeGreaterThan</field>\n      <code>REQUIRED</code>\n      <message>Передайте обязательный query-параметр typeGreaterThan</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Delete by type with an invalid enum",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/type/abc",
+                "description": "The invalid enum exercises this route on Helios without selecting an organization. Demonstrate successful deletion by type only with isolated data."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр type</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>type</field>\\n      <code>INVALID_ENUM</code>\\n      <message>Допустимы только PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_type",
+                  "originalRequest": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/type/abc",
+                    "description": "The invalid enum exercises this route on Helios without selecting an organization. Demonstrate successful deletion by type only with isolated data."
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр type</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>type</field>\n      <code>INVALID_ENUM</code>\n      <message>Допустимы только PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Unexpected GET body",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "unexpected",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Операция не принимает тело запроса</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>UNEXPECTED_BODY</code>\\n      <message>Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "response": [
+                {
+                  "name": "Contract · unexpectedBody",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "unexpected",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Операция не принимает тело запроса</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>UNEXPECTED_BODY</code>\n      <message>Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Missing organization XML",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>MISSING_BODY</code>\\n  <message>Отсутствует обязательное XML-тело</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>REQUIRED</code>\\n      <message>Передайте XML-тело с корневым элементом organization</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missingBody",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>MISSING_BODY</code>\n  <message>Отсутствует обязательное XML-тело</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>REQUIRED</code>\n      <message>Передайте XML-тело с корневым элементом organization</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Missing employee XML",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>MISSING_BODY</code>\\n  <message>Отсутствует обязательное XML-тело</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>REQUIRED</code>\\n      <message>Передайте XML-тело с корневым элементом employee</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missingBody2",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>MISSING_BODY</code>\n  <message>Отсутствует обязательное XML-тело</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>REQUIRED</code>\n      <message>Передайте XML-тело с корневым элементом employee</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Malformed XML",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>MALFORMED_XML</code>\\n  <message>XML-тело не удалось разобрать</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>XML должен содержать один корректно закрытый корневой элемент</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · malformedXml",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>MALFORMED_XML</code>\n  <message>XML-тело не удалось разобрать</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>INVALID_FORMAT</code>\n      <message>XML должен содержать один корректно закрытый корневой элемент</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "406 · Unsupported Accept",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 406, \"example\": \"<error>\\n  <code>NOT_ACCEPTABLE</code>\\n  <message>Доступный формат ответа – application/xml</message>\\n  <details>\\n    <detail>\\n      <location>header</location>\\n      <field>Accept</field>\\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\\n      <message>Укажите application/xml или подходящую маску типа в Accept</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unsupportedAccept",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": ""
+                  },
+                  "status": "Not Acceptable",
+                  "code": 406,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>NOT_ACCEPTABLE</code>\n  <message>Доступный формат ответа – application/xml</message>\n  <details>\n    <detail>\n      <location>header</location>\n      <field>Accept</field>\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\n      <message>Укажите application/xml или подходящую маску типа в Accept</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "404 · Missing organization",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/9223372036854775807",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 404, \"example\": \"<error>\\n  <code>NOT_FOUND</code>\\n  <message>Организация с указанным ID не найдена</message>\\n  <details/>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missingOrganization",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/9223372036854775807",
+                    "description": ""
+                  },
+                  "status": "Not Found",
+                  "code": 404,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>NOT_FOUND</code>\n  <message>Организация с указанным ID не найдена</message>\n  <details/>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "415 · Unsupported Content-Type",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 415, \"example\": \"<error>\\n  <code>UNSUPPORTED_MEDIA_TYPE</code>\\n  <message>Тип тела запроса не поддерживается</message>\\n  <details>\\n    <detail>\\n      <location>header</location>\\n      <field>Content-Type</field>\\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\\n      <message>Отправьте XML с заголовком Content-Type: application/xml. Формат application/json не поддерживается</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unsupportedContentType",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unsupported Media Type",
+                  "code": 415,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>UNSUPPORTED_MEDIA_TYPE</code>\n  <message>Тип тела запроса не поддерживается</message>\n  <details>\n    <detail>\n      <location>header</location>\n      <field>Content-Type</field>\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\n      <message>Отправьте XML с заголовком Content-Type: application/xml. Формат application/json не поддерживается</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "415 · Unsupported Content-Encoding",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Encoding",
+                    "value": "gzip"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "x",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 415, \"example\": \"<error>\\n  <code>UNSUPPORTED_MEDIA_TYPE</code>\\n  <message>Кодирование тела запроса не поддерживается</message>\\n  <details>\\n    <detail>\\n      <location>header</location>\\n      <field>Content-Encoding</field>\\n      <code>UNSUPPORTED_ENCODING</code>\\n      <message>Используйте identity или не передавайте Content-Encoding</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unsupportedContentEncoding",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Encoding",
+                        "value": "gzip"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "x",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unsupported Media Type",
+                  "code": 415,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>UNSUPPORTED_MEDIA_TYPE</code>\n  <message>Кодирование тела запроса не поддерживается</message>\n  <details>\n    <detail>\n      <location>header</location>\n      <field>Content-Encoding</field>\n      <code>UNSUPPORTED_ENCODING</code>\n      <message>Используйте identity или не передавайте Content-Encoding</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Multiple organization violations",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name/><coordinates><y>1</y></coordinates><annualTurnover>0</annualTurnover></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Несколько полей организации не прошли проверку</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>name</field>\\n      <code>TOO_SHORT</code>\\n      <message>name обязателен и должен содержать минимум один символ</message>\\n    </detail>\\n    <detail>\\n      <location>body</location>\\n      <field>coordinates.x</field>\\n      <code>REQUIRED</code>\\n      <message>Отсутствует обязательная координата x типа int64</message>\\n    </detail>\\n    <detail>\\n      <location>body</location>\\n      <field>annualTurnover</field>\\n      <code>OUT_OF_RANGE</code>\\n      <message>annualTurnover должен быть конечным числом строго больше 0</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · multipleViolations",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name/><coordinates><y>1</y></coordinates><annualTurnover>0</annualTurnover></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Несколько полей организации не прошли проверку</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>name</field>\n      <code>TOO_SHORT</code>\n      <message>name обязателен и должен содержать минимум один символ</message>\n    </detail>\n    <detail>\n      <location>body</location>\n      <field>coordinates.x</field>\n      <code>REQUIRED</code>\n      <message>Отсутствует обязательная координата x типа int64</message>\n    </detail>\n    <detail>\n      <location>body</location>\n      <field>annualTurnover</field>\n      <code>OUT_OF_RANGE</code>\n      <message>annualTurnover должен быть конечным числом строго больше 0</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Invalid nested coordinate",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><officialAddress><zipCode/><town><x>1.5</x><y>1</y><name/></town></officialAddress></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неверная вложенная координата</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>officialAddress.town.x</field>\\n      <code>INVALID_TYPE</code>\\n      <message>Координата x должна быть целым числом в диапазоне int64. Дробные значения недопустимы</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidNestedField",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><officialAddress><zipCode/><town><x>1.5</x><y>1</y><name/></town></officialAddress></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неверная вложенная координата</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>officialAddress.town.x</field>\n      <code>INVALID_TYPE</code>\n      <message>Координата x должна быть целым числом в диапазоне int64. Дробные значения недопустимы</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Invalid organization type",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><type>public</type></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неизвестный тип организации</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>type</field>\\n      <code>INVALID_ENUM</code>\\n      <message>Выберите PUBLIC, GOVERNMENT, TRUST или PRIVATE_LIMITED_COMPANY. Используйте заглавные буквы</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidEnum",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><type>public</type></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неизвестный тип организации</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>type</field>\n      <code>INVALID_ENUM</code>\n      <message>Выберите PUBLIC, GOVERNMENT, TRUST или PRIVATE_LIMITED_COMPANY. Используйте заглавные буквы</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Read-only organization ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><id>1</id></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Передано поле, управляемое сервером</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>id</field>\\n      <code>READ_ONLY_FIELD</code>\\n      <message>Сервер назначает ID автоматически. Удалите поле id из тела запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · readOnlyField",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><id>1</id></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Передано поле, управляемое сервером</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>id</field>\n      <code>READ_ONLY_FIELD</code>\n      <message>Сервер назначает ID автоматически. Удалите поле id из тела запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Unknown organization element",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><nickname>x</nickname></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неизвестное поле тела</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>nickname</field>\\n      <code>UNKNOWN_FIELD</code>\\n      <message>Поле nickname не поддерживается. Удалите его из тела запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unknownElement",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><nickname>x</nickname></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неизвестное поле тела</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>nickname</field>\n      <code>UNKNOWN_FIELD</code>\n      <message>Поле nickname не поддерживается. Удалите его из тела запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Duplicate organization element",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><name>x</name></organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Одиночное поле повторяется</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>name</field>\\n      <code>DUPLICATE_FIELD</code>\\n      <message>XML-тело должно содержать ровно один элемент name</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · duplicateElement",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<organization><name>ok</name><coordinates><x>1</x><y>1</y></coordinates><name>x</name></organization>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Одиночное поле повторяется</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>name</field>\n      <code>DUPLICATE_FIELD</code>\n      <message>XML-тело должно содержать ровно один элемент name</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Wrong organization root",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<wrong/>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неверный корневой элемент</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>Корневой элемент XML должен называться organization</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · wrongRoot",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<wrong/>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неверный корневой элемент</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>INVALID_FORMAT</code>\n      <message>Корневой элемент XML должен называться organization</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Invalid employee fields",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name/><organizationId>0</organizationId></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Поля сотрудника не прошли проверку</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>name</field>\\n      <code>TOO_SHORT</code>\\n      <message>name не может быть пустой строкой</message>\\n    </detail>\\n    <detail>\\n      <location>body</location>\\n      <field>organizationId</field>\\n      <code>OUT_OF_RANGE</code>\\n      <message>organizationId должен быть целым числом от 1 до 9223372036854775807. Если работодателя нет, не передавайте этот элемент</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidEmployee",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee><name/><organizationId>0</organizationId></employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Поля сотрудника не прошли проверку</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>name</field>\n      <code>TOO_SHORT</code>\n      <message>name не может быть пустой строкой</message>\n    </detail>\n    <detail>\n      <location>body</location>\n      <field>organizationId</field>\n      <code>OUT_OF_RANGE</code>\n      <message>organizationId должен быть целым числом от 1 до 9223372036854775807. Если работодателя нет, не передавайте этот элемент</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Read-only employee ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name>ok</name><id>1</id></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Передано поле, управляемое сервером</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>id</field>\\n      <code>READ_ONLY_FIELD</code>\\n      <message>Сервер назначает ID автоматически. Удалите поле id из тела запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · readOnlyField",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee><name>ok</name><id>1</id></employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Передано поле, управляемое сервером</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>id</field>\n      <code>READ_ONLY_FIELD</code>\n      <message>Сервер назначает ID автоматически. Удалите поле id из тела запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Unknown employee element",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name>ok</name><nickname>x</nickname></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неизвестное поле тела</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>nickname</field>\\n      <code>UNKNOWN_FIELD</code>\\n      <message>Поле nickname не поддерживается. Удалите его из тела запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unknownElement",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee><name>ok</name><nickname>x</nickname></employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неизвестное поле тела</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>nickname</field>\n      <code>UNKNOWN_FIELD</code>\n      <message>Поле nickname не поддерживается. Удалите его из тела запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Duplicate employee element",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name>ok</name><name>x</name></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Одиночное поле повторяется</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>name</field>\\n      <code>DUPLICATE_FIELD</code>\\n      <message>XML-тело должно содержать ровно один элемент name</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · duplicateElement",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee><name>ok</name><name>x</name></employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Одиночное поле повторяется</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>name</field>\n      <code>DUPLICATE_FIELD</code>\n      <message>XML-тело должно содержать ровно один элемент name</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Wrong employee root",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<wrong/>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Неверный корневой элемент</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>INVALID_FORMAT</code>\\n      <message>Корневой элемент XML должен называться employee</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · wrongRoot2",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<wrong/>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Неверный корневой элемент</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>INVALID_FORMAT</code>\n      <message>Корневой элемент XML должен называться employee</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Manager",
+          "item": [
+            {
+              "name": "400 · Unknown manager query parameter",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807&unexpected=1",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неизвестный параметр запроса</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>unexpected</field>\\n      <code>UNKNOWN_FIELD</code>\\n      <message>Эта операция не поддерживает параметр unexpected. Удалите его из запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unknownQueryParameter",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807&unexpected=1",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неизвестный параметр запроса</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>unexpected</field>\n      <code>UNKNOWN_FIELD</code>\n      <message>Эта операция не поддерживает параметр unexpected. Удалите его из запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid hire organization ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/abc?employeeId=1",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр id</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>id</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_id",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/abc?employeeId=1",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр id</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>id</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid hire employee ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/1?employeeId=abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр employeeId</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>employeeId</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_employeeId",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/1?employeeId=abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр employeeId</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>employeeId</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Missing hire employee ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/1",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Отсутствует обязательный параметр employeeId</message>\\n  <details>\\n    <detail>\\n      <location>query</location>\\n      <field>employeeId</field>\\n      <code>REQUIRED</code>\\n      <message>Передайте обязательный параметр employeeId</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missing_employeeId",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/1",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Отсутствует обязательный параметр employeeId</message>\n  <details>\n    <detail>\n      <location>query</location>\n      <field>employeeId</field>\n      <code>REQUIRED</code>\n      <message>Передайте обязательный параметр employeeId</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid acquirer ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/acquise/abc/1",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр acquirerId</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>acquirerId</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_acquirerId",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/acquise/abc/1",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр acquirerId</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>acquirerId</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Invalid acquired ID",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/acquise/1/abc",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Неверный параметр acquiredId</message>\\n  <details>\\n    <detail>\\n      <location>path</location>\\n      <field>acquiredId</field>\\n      <code>INVALID_TYPE</code>\\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalid_acquiredId",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/acquise/1/abc",
+                    "description": ""
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Неверный параметр acquiredId</message>\n  <details>\n    <detail>\n      <location>path</location>\n      <field>acquiredId</field>\n      <code>INVALID_TYPE</code>\n      <message>ID должен быть целым числом от 1 до 9223372036854775807. Значение abc не подходит</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "400 · Unexpected manager body",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "x",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 400, \"example\": \"<error>\\n  <code>INVALID_REQUEST</code>\\n  <message>Операция не принимает тело запроса</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>$</field>\\n      <code>UNEXPECTED_BODY</code>\\n      <message>Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unexpectedBody",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "x",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>INVALID_REQUEST</code>\n  <message>Операция не принимает тело запроса</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>$</field>\n      <code>UNEXPECTED_BODY</code>\n      <message>Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "406 · Unsupported manager Accept",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 406, \"example\": \"<error>\\n  <code>NOT_ACCEPTABLE</code>\\n  <message>Доступный формат ответа — application/xml</message>\\n  <details>\\n    <detail>\\n      <location>header</location>\\n      <field>Accept</field>\\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\\n      <message>Укажите application/xml или подходящую маску типа в Accept</message>\\n    </detail>\\n  </details>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · unsupportedAccept",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/json"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/9223372036854775807?employeeId=9223372036854775807",
+                    "description": ""
+                  },
+                  "status": "Not Acceptable",
+                  "code": 406,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>NOT_ACCEPTABLE</code>\n  <message>Доступный формат ответа — application/xml</message>\n  <details>\n    <detail>\n      <location>header</location>\n      <field>Accept</field>\n      <code>UNSUPPORTED_MEDIA_TYPE</code>\n      <message>Укажите application/xml или подходящую маску типа в Accept</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "409 · Self acquisition",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/acquise/9223372036854775807/9223372036854775807",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 409, \"example\": \"<error>\\n  <code>SELF_ACQUISITION</code>\\n  <message>Поглощающая и поглощаемая организации должны различаться</message>\\n  <details/>\\n</error>\"});"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · selfAcquisition",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/acquise/9223372036854775807/9223372036854775807",
+                    "description": ""
+                  },
+                  "status": "Conflict",
+                  "code": 409,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>SELF_ACQUISITION</code>\n  <message>Поглощающая и поглощаемая организации должны различаться</message>\n  <details/>\n</error>"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Guided demo",
+      "item": [
+        {
+          "name": "Workflow",
+          "item": [
+            {
+              "name": "Create acquirer · 201",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization>\n  <name>{{demo_prefix}}-Acquirer</name>\n  <coordinates><x>9223372036854775807</x><y>-2147483648</y></coordinates>\n  <annualTurnover>2.5</annualTurnover>\n  <type>PUBLIC</type>\n  <officialAddress><zipCode/><town><x>-9223372036854775808</x><y>0</y><name/></town></officialAddress>\n</organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 201, \"roots\": {\"201\": \"organization\"}, \"guided\": true, \"fields\": {\"organization.name\": \"{{demo_prefix}}-Acquirer\", \"organization.coordinates.x\": \"9223372036854775807\", \"organization.coordinates.y\": \"-2147483648\", \"organization.officialAddress.town.x\": \"-9223372036854775808\", \"organization.employeeCount\": \"0\"}, \"capture\": {\"demo_org_a\": \"organization.id\", \"demo_creation_date\": \"organization.creationDate\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "if (pm.environment.get('demo_prefix') || ['demo_org_a', 'demo_org_b', 'demo_employee'].some(key => pm.environment.get(key))) {",
+                      "    console.error('Finish cleanup and inspect the previous demo before starting a new one.');",
+                      "    pm.execution.skipRequest();",
+                      "} else {",
+                      "    pm.environment.set('demo_origin', origin);",
+                      "    pm.environment.set('demo_prefix', 'postman-' + require('uuid').v4());",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create acquisition source · 201",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization>\n  <name>{{demo_prefix}}-Acquired</name>\n  <coordinates><x>1</x><y>2</y></coordinates>\n  <type>TRUST</type>\n</organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 201, \"roots\": {\"201\": \"organization\"}, \"guided\": true, \"fields\": {\"organization.name\": \"{{demo_prefix}}-Acquired\", \"organization.type\": \"TRUST\", \"organization.employeeCount\": \"0\"}, \"capture\": {\"demo_org_b\": \"organization.id\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\"];",
+                      "const newId = \"demo_org_b\";",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create unassigned employee · 201",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name>{{demo_prefix}}-Employee</name></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 201, \"roots\": {\"201\": \"employee\"}, \"guided\": true, \"fields\": {\"employee.name\": \"{{demo_prefix}}-Employee\"}, \"absent\": [\"employee.organizationId\"], \"capture\": {\"demo_employee\": \"employee.id\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\", \"demo_org_b\"];",
+                      "const newId = \"demo_employee\";",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get the acquirer · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_a}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"organization\"}, \"guided\": true, \"fields\": {\"organization.id\": \"{{demo_org_a}}\", \"organization.name\": \"{{demo_prefix}}-Acquirer\", \"organization.creationDate\": \"{{demo_creation_date}}\", \"organization.employeeCount\": \"0\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update the acquirer · 200",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_a}}",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<organization>\n  <name>{{demo_prefix}}-Acquirer updated</name>\n  <coordinates><x>10</x><y>20</y></coordinates>\n  <type>PUBLIC</type>\n</organization>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"organization\"}, \"guided\": true, \"fields\": {\"organization.id\": \"{{demo_org_a}}\", \"organization.name\": \"{{demo_prefix}}-Acquirer updated\", \"organization.creationDate\": \"{{demo_creation_date}}\"}, \"absent\": [\"organization.annualTurnover\", \"organization.officialAddress\"]});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List demo organizations · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations?page=1&size=1&sort=name&filter=name:startsWith:{{demo_prefix}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"organizations\"}, \"guided\": true, \"headers\": {\"X-Page\": \"1\", \"X-Page-Size\": \"1\", \"X-Total-Count\": \"2\"}, \"fields\": {\"organizations.organization.id\": \"{{demo_org_b}}\", \"organizations.organization.name\": \"{{demo_prefix}}-Acquired\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\", \"demo_org_b\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Count organizations with type above PUBLIC · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/count?typeGreaterThan=PUBLIC",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"countResult\"}, \"guided\": true, \"nonnegative\": [\"countResult.count\"]});"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update the employee · 200",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name>{{demo_prefix}}-Employee updated</name></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"employee\"}, \"guided\": true, \"fields\": {\"employee.id\": \"{{demo_employee}}\", \"employee.name\": \"{{demo_prefix}}-Employee updated\"}, \"absent\": [\"employee.organizationId\"]});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Hire the employee into the source organization · 200",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/{{demo_org_b}}?employeeId={{demo_employee}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"headcount\"}, \"guided\": true, \"fields\": {\"headcount.organizationId\": \"{{demo_org_b}}\", \"headcount.employeeCount\": \"1\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List the source organization's employees · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees?page=1&size=1&filter=organizationId:eq:{{demo_org_b}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"employees\"}, \"guided\": true, \"headers\": {\"X-Page\": \"1\", \"X-Page-Size\": \"1\", \"X-Total-Count\": \"1\"}, \"fields\": {\"employees.employee.id\": \"{{demo_employee}}\", \"employees.employee.organizationId\": \"{{demo_org_b}}\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "409 · Hire an employee who is already assigned",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/hire/{{demo_org_a}}?employeeId={{demo_employee}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 409, \"example\": \"<error>\\n  <code>EMPLOYEE_ALREADY_ASSIGNED</code>\\n  <message>Сотрудник уже принадлежит другой организации</message>\\n  <details/>\\n</error>\", \"guided\": true});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\", \"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · employeeAlreadyAssigned",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{manager_base_url}}/orgmanager/hire/{{demo_org_a}}?employeeId={{demo_employee}}",
+                    "description": ""
+                  },
+                  "status": "Conflict",
+                  "code": 409,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>EMPLOYEE_ALREADY_ASSIGNED</code>\n  <message>Сотрудник уже принадлежит другой организации</message>\n  <details/>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "409 · Delete a nonempty organization",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_b}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 409, \"example\": \"<error>\\n  <code>ORGANIZATION_NOT_EMPTY</code>\\n  <message>Нельзя удалить организацию, пока в ней есть сотрудники</message>\\n  <details/>\\n</error>\", \"guided\": true});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · nonemptyOrganization",
+                  "originalRequest": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/{{demo_org_b}}",
+                    "description": ""
+                  },
+                  "status": "Conflict",
+                  "code": 409,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>ORGANIZATION_NOT_EMPTY</code>\n  <message>Нельзя удалить организацию, пока в ней есть сотрудники</message>\n  <details/>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "422 · Reject an invalid employee update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "<employee><name/><organizationId>0</organizationId></employee>",
+                  "options": {
+                    "raw": {
+                      "language": "xml"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 422, \"example\": \"<error>\\n  <code>VALIDATION_FAILED</code>\\n  <message>Поля сотрудника не прошли проверку</message>\\n  <details>\\n    <detail>\\n      <location>body</location>\\n      <field>name</field>\\n      <code>TOO_SHORT</code>\\n      <message>name не может быть пустой строкой</message>\\n    </detail>\\n    <detail>\\n      <location>body</location>\\n      <field>organizationId</field>\\n      <code>OUT_OF_RANGE</code>\\n      <message>organizationId должен быть целым числом от 1 до 9223372036854775807. Если работодателя нет, не передавайте этот элемент</message>\\n    </detail>\\n  </details>\\n</error>\", \"guided\": true});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · invalidEmployee",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                    "description": "",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "<employee><name/><organizationId>0</organizationId></employee>",
+                      "options": {
+                        "raw": {
+                          "language": "xml"
+                        }
+                      }
+                    }
+                  },
+                  "status": "Unprocessable Entity",
+                  "code": 422,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>VALIDATION_FAILED</code>\n  <message>Поля сотрудника не прошли проверку</message>\n  <details>\n    <detail>\n      <location>body</location>\n      <field>name</field>\n      <code>TOO_SHORT</code>\n      <message>name не может быть пустой строкой</message>\n    </detail>\n    <detail>\n      <location>body</location>\n      <field>organizationId</field>\n      <code>OUT_OF_RANGE</code>\n      <message>organizationId должен быть целым числом от 1 до 9223372036854775807. Если работодателя нет, не передавайте этот элемент</message>\n    </detail>\n  </details>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "Get the employee and verify the rejected update changed nothing · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"employee\"}, \"guided\": true, \"fields\": {\"employee.id\": \"{{demo_employee}}\", \"employee.name\": \"{{demo_prefix}}-Employee updated\", \"employee.organizationId\": \"{{demo_org_b}}\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Acquire the source organization · 200",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{manager_base_url}}/orgmanager/acquise/{{demo_org_a}}/{{demo_org_b}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"acquisition\"}, \"guided\": true, \"fields\": {\"acquisition.organization.id\": \"{{demo_org_a}}\", \"acquisition.acquiredId\": \"{{demo_org_b}}\", \"acquisition.organization.employeeCount\": \"1\", \"acquisition.employeeCount\": \"1\", \"acquisition.organization.name\": \"{{demo_prefix}}-Acquirer updated\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\", \"demo_org_b\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "404 · Get the acquired organization after its removal",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_b}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 404, \"example\": \"<error>\\n  <code>NOT_FOUND</code>\\n  <message>Организация с указанным ID не найдена</message>\\n  <details/>\\n</error>\", \"guided\": true});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": [
+                {
+                  "name": "Contract · missingOrganization",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Accept",
+                        "value": "application/xml"
+                      }
+                    ],
+                    "url": "{{organizations_base_url}}/organizations/{{demo_org_b}}",
+                    "description": ""
+                  },
+                  "status": "Not Found",
+                  "code": 404,
+                  "_postman_previewlanguage": "xml",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/xml"
+                    }
+                  ],
+                  "body": "<error>\n  <code>NOT_FOUND</code>\n  <message>Организация с указанным ID не найдена</message>\n  <details/>\n</error>"
+                }
+              ]
+            },
+            {
+              "name": "Get the transferred employee · 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": 200, \"roots\": {\"200\": \"employee\"}, \"guided\": true, \"fields\": {\"employee.id\": \"{{demo_employee}}\", \"employee.name\": \"{{demo_prefix}}-Employee updated\", \"employee.organizationId\": \"{{demo_org_a}}\"}});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\", \"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Cleanup",
+          "item": [
+            {
+              "name": "Delete the demo employee",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/employees/{{demo_employee}}",
+                "description": "Use only for the captured demo fixture. A 204 confirms deletion. A 404 confirms it was already absent."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": [204, 404], \"guided\": true, \"roots\": {\"404\": \"error\"}, \"clear\": [\"demo_employee\"]});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_employee\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Delete the demo source if it still exists",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_b}}",
+                "description": "Use only for the captured demo fixture. A 204 confirms deletion. A 404 confirms it was already absent."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": [204, 404], \"guided\": true, \"roots\": {\"404\": \"error\"}, \"clear\": [\"demo_org_b\"]});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_b\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Delete the demo acquirer",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/xml"
+                  }
+                ],
+                "url": "{{organizations_base_url}}/organizations/{{demo_org_a}}",
+                "description": "Use only for the captured demo fixture. A 204 confirms deletion. A 404 confirms it was already absent."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.variables.set('lab2_expected', {\"status\": [204, 404], \"guided\": true, \"roots\": {\"404\": \"error\"}, \"clear\": [\"demo_org_a\"]});",
+                      "const origin = pm.variables.get('organizations_base_url') + '|' + pm.variables.get('manager_base_url');",
+                      "const required = [\"demo_org_a\"];",
+                      "const newId = null;",
+                      "if (pm.environment.get('demo_origin') !== origin",
+                      "    || !pm.environment.get('demo_prefix')",
+                      "    || required.some(key => !/^[1-9][0-9]{0,18}$/.test(pm.environment.get(key) || ''))",
+                      "    || (newId && pm.environment.get(newId))) {",
+                      "    console.error('Prepare or inspect the demo fixtures in this environment before sending this request.');",
+                      "    pm.execution.skipRequest();",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

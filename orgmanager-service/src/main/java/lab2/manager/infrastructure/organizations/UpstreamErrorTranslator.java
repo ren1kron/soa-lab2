@@ -1,11 +1,12 @@
 package lab2.manager.infrastructure.organizations;
 
+import java.net.http.HttpHeaders;
 import lab2.manager.application.error.ServiceException;
 
 final class UpstreamErrorTranslator {
     private UpstreamErrorTranslator() {}
 
-    static ServiceException translate(int status, byte[] body) {
+    static ServiceException translate(int status, byte[] body, HttpHeaders headers) {
         var error = UpstreamXmlReader.read(body, "error", lab2.manager.generated.model.Error.class);
         if (status == 404 || status == 409) {
             var details =
@@ -35,10 +36,14 @@ final class UpstreamErrorTranslator {
                     new ServiceException(
                             "UPSTREAM_INTERNAL_ERROR",
                             "The first service failed; check state before repeating a change");
-            case 503 ->
-                    new ServiceException(
-                            "SERVICE_UNAVAILABLE",
-                            "The first service is temporarily unavailable; check current state before repeating a change");
+            case 503 -> {
+                var values = headers.allValues("Retry-After");
+                var seconds =
+                        values.size() == 1 && values.get(0).matches("[0-9]+")
+                                ? values.get(0)
+                                : null;
+                yield ServiceException.upstreamUnavailable(seconds);
+            }
             case 504 ->
                     new ServiceException(
                             "UPSTREAM_TIMEOUT",

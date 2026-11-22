@@ -1,8 +1,9 @@
-import {useState} from 'react';
+import {useState, type ReactNode} from 'react';
 import {type Entity, type XmlRecord, valueAt, organizationTypes} from './api';
 
-export default function EntityForm({entity, initial, busy, onSave, onCancel}: {
+export default function EntityForm({entity, initial, busy, headingId, onSave, onCancel, children}: {
   entity: Entity; initial: XmlRecord | null; busy: boolean;
+  headingId?: string; children?: ReactNode;
   onSave: (data: XmlRecord) => Promise<void>; onCancel: () => void;
 }) {
   const employee = entity === 'employees';
@@ -18,7 +19,7 @@ export default function EntityForm({entity, initial, busy, onSave, onCancel}: {
   const [address, setAddress] = useState(!!initial?.officialAddress);
   const [town, setTown] = useState(!!valueAt(initial ?? {}, 'officialAddress.town.x'));
   const input = (field: string, label: string, required = false) => <label>{label}
-    <input value={values[field]} required={required}
+    <input name={field} value={values[field]} required={required}
            onChange={event => setValues({...values, [field]: event.target.value})}/>
   </label>;
 
@@ -43,8 +44,8 @@ export default function EntityForm({entity, initial, busy, onSave, onCancel}: {
     onSave(data);
   }
 
-  return <section>
-    <h2>{initial ? `Изменение записи с ID ${valueAt(initial, 'id')}` : employee ? 'Новый сотрудник' : 'Новая организация'}</h2>
+  return <>
+    <h2 id={headingId}>{initial ? `Изменение записи с ID ${valueAt(initial, 'id')}` : employee ? 'Новый сотрудник' : 'Новая организация'}</h2>
     <form onSubmit={event => {
       event.preventDefault();
       submit();
@@ -82,11 +83,12 @@ export default function EntityForm({entity, initial, busy, onSave, onCancel}: {
         </>}
         <p className="muted">Поля со звездочкой нужно заполнить</p>
         {employee && <p className="muted">Для сотрудника без работы оставьте ID работодателя пустым</p>}
+        {children}
         <div className="actions">
           <button type="submit">Сохранить</button>
           <button type="button" onClick={onCancel}>Отмена</button>
         </div>
       </fieldset>
     </form>
-  </section>;
+  </>;
 }

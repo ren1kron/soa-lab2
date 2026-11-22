@@ -14,8 +14,7 @@ public final class HireEmployeeService {
         if (employee.getOrganizationId() != null
                 && employee.getOrganizationId() != organizationId) {
             throw new ServiceException(
-                    "EMPLOYEE_ALREADY_ASSIGNED",
-                    "Employee already belongs to another organization");
+                    "EMPLOYEE_ALREADY_ASSIGNED", "Сотрудник уже принадлежит другой организации");
         }
         if (employee.getOrganizationId() == null) organizations.assign(employee, organizationId);
         return organizations.headcount(organizationId);

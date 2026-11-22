@@ -6,6 +6,7 @@ import java.math.BigInteger;
 import java.util.*;
 import lab2.organizations.application.query.CollectionQuery;
 import lab2.organizations.application.query.PageResult;
+import lab2.organizations.generated.model.OrganizationType;
 import lab2.organizations.web.error.RequestException;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +29,27 @@ class CollectionQueryParserTest {
     }
 
     @Test
+    void sortsOrganizationTypesByTheirXmlValuesInBothDirections() {
+        var rows =
+                List.<Map<String, Object>>of(
+                        Map.of("id", 6L, "type", OrganizationType.PUBLIC),
+                        Map.of("id", 1L, "type", OrganizationType.PUBLIC),
+                        Map.of("id", 2L, "type", OrganizationType.GOVERNMENT),
+                        Map.of("id", 3L, "type", OrganizationType.TRUST),
+                        Map.of("id", 4L, "type", OrganizationType.PRIVATE_LIMITED_COMPANY),
+                        Map.of("id", 5L));
+
+        var ascending = apply(CollectionQueryParser.parse(params("sort", "type"), false), rows);
+        var descending = apply(CollectionQueryParser.parse(params("sort", "-type"), false), rows);
+        assertEquals(
+                List.of(2L, 4L, 1L, 6L, 3L, 5L),
+                ascending.items().stream().map(row -> row.get("id")).toList());
+        assertEquals(
+                List.of(3L, 1L, 6L, 4L, 2L, 5L),
+                descending.items().stream().map(row -> row.get("id")).toList());
+    }
+
+    @Test
     void combinesTypedFiltersAndTreatsAbsentParentsAsNull() {
         var q =
                 CollectionQueryParser.parse(
@@ -37,8 +59,8 @@ class CollectionQueryParserTest {
                 apply(
                         q,
                         List.of(
-                                Map.of("id", 1L, "type", "TRUST"),
-                                Map.of("id", 2L, "type", "PUBLIC"),
+                                Map.of("id", 1L, "type", OrganizationType.GOVERNMENT),
+                                Map.of("id", 2L, "type", OrganizationType.PUBLIC),
                                 Map.of("id", 3L)));
         assertEquals(1, page.total());
         assertEquals(1L, page.items().get(0).get("id"));
@@ -115,6 +137,19 @@ class CollectionQueryParserTest {
                                         CollectionQueryParser.parse(
                                                 Map.of("sort", new String[] {"id", "name"}), false))
                         .status);
+    }
+
+    @Test
+    void illustratesAValidSortWhenTheRepeatedTermsConflict() {
+        var error =
+                assertThrows(
+                        RequestException.class,
+                        () ->
+                                CollectionQueryParser.parse(
+                                        Map.of("sort", new String[] {"name", "-name"}), false));
+        assertEquals(
+                "Используйте sort=name,-id вместо sort=name&sort=-id",
+                error.details.get(0).getMessage());
     }
 
     private PageResult<Map<String, Object>> apply(

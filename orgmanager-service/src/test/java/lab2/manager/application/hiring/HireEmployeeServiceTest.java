@@ -15,9 +15,9 @@ class HireEmployeeServiceTest {
         g.employees.put(10L, new Employee(10L, "name").organizationId(1L));
         assertEquals(1L, w.hire(1, 10));
         assertEquals(0, g.updates);
-        assertEquals(
-                "EMPLOYEE_ALREADY_ASSIGNED",
-                assertThrows(ServiceException.class, () -> w.hire(2, 10)).code);
+        var error = assertThrows(ServiceException.class, () -> w.hire(2, 10));
+        assertEquals("EMPLOYEE_ALREADY_ASSIGNED", error.code);
+        assertEquals("Сотрудник уже принадлежит другой организации", error.getMessage());
     }
 
     @Test

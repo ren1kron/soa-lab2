@@ -56,6 +56,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("jakarta.ws.rs:jakarta.ws.rs-api:3.1.0")
+    testRuntimeOnly("org.glassfish.jersey.core:jersey-common:3.1.10")
     testImplementation("jakarta.annotation:jakarta.annotation-api:2.1.1")
     testImplementation("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2")
     testImplementation("jakarta.validation:jakarta.validation-api:3.0.2")

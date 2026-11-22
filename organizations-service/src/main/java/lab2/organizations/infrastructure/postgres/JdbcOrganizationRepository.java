@@ -24,7 +24,8 @@ public final class JdbcOrganizationRepository implements OrganizationRepository 
     @Override
     public Organization find(long id) {
         var rows = jdbc.query("SELECT " + COLUMNS + " FROM organizations WHERE id=?", ROWS, id);
-        if (rows.isEmpty()) throw ServiceException.notFound();
+        if (rows.isEmpty())
+            throw ServiceException.notFound("Организация с указанным ID не найдена");
         return rows.get(0);
     }
 
@@ -59,7 +60,7 @@ public final class JdbcOrganizationRepository implements OrganizationRepository 
     @Override
     public void delete(long id) {
         if (jdbc.update("DELETE FROM organizations WHERE id=?", id) == 0)
-            throw ServiceException.notFound();
+            throw ServiceException.notFound("Организация с указанным ID не найдена");
     }
 
     @Override

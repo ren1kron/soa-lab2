@@ -16,10 +16,16 @@ public class ManagerExceptionMapper implements ExceptionMapper<Exception> {
     }
 
     public static Response response(ServiceException error) {
-        return Response.status(ErrorResponseMapper.status(error))
-                .type(MediaType.APPLICATION_XML_TYPE)
-                .entity(ManagerResponseWriter.write(ErrorResponseMapper.body(error), "error"))
-                .build();
+        var response =
+                Response.status(ErrorResponseMapper.status(error))
+                        .type(MediaType.APPLICATION_XML_TYPE)
+                        .entity(
+                                ManagerResponseWriter.write(
+                                        ErrorResponseMapper.body(error), "error"));
+        if (error.retryAfterSeconds != null) {
+            response.header(HttpHeaders.RETRY_AFTER, error.retryAfterSeconds);
+        }
+        return response.build();
     }
 
     @Override
@@ -27,12 +33,10 @@ public class ManagerExceptionMapper implements ExceptionMapper<Exception> {
         if (e instanceof ServiceException error) return response(error);
         if (e instanceof RequestException error) return response(error);
         if (e instanceof NotFoundException)
-            return response(new RequestException(404, "NOT_FOUND", "Resource was not found"));
-        if (e instanceof NotAcceptableException)
-            return response(
-                    new RequestException(406, "NOT_ACCEPTABLE", "Allow application/xml responses"));
+            return response(new RequestException(404, "NOT_FOUND", "Ресурс не найден"));
+        if (e instanceof NotAcceptableException) return response(RequestException.notAcceptable());
         if (e instanceof BadRequestException)
-            return response(new RequestException(400, "INVALID_REQUEST", "Invalid request"));
+            return response(new RequestException(400, "INVALID_REQUEST", "Неверный запрос"));
         if (e instanceof WebApplicationException web
                 && web.getResponse().getStatus() >= 400
                 && web.getResponse().getStatus() < 500) {
@@ -45,16 +49,12 @@ public class ManagerExceptionMapper implements ExceptionMapper<Exception> {
                                             status == 405
                                                     ? "METHOD_NOT_ALLOWED"
                                                     : "INVALID_REQUEST",
-                                            "Request does not match an available operation")));
+                                            "Запрос не соответствует доступной операции")));
             if (status == 405) result.allow(web.getResponse().getAllowedMethods());
             return result.build();
         }
         java.util.logging.Logger.getLogger(ManagerExceptionMapper.class.getName())
                 .log(java.util.logging.Level.SEVERE, "Manager request failed", e);
-        return response(
-                new RequestException(
-                        500,
-                        "INTERNAL_ERROR",
-                        "Request failed; check current state before repeating a change"));
+        return response(new ServiceException("INTERNAL_ERROR", e.getMessage()));
     }
 }

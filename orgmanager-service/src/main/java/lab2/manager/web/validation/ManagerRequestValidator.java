@@ -40,26 +40,32 @@ public class ManagerRequestValidator implements ContainerRequestFilter, Containe
             var params = request.getUriInfo().getQueryParameters();
             params.forEach(
                     (key, values) -> {
+                        String field = key.isEmpty() ? "$" : key;
                         if (!hire || !key.equals("employeeId"))
                             errors.add(
                                     RequestException.detail(
                                             "query",
-                                            key,
+                                            field,
                                             "UNKNOWN_FIELD",
-                                            "Unknown query parameter"));
+                                            "Эта операция не поддерживает параметр "
+                                                    + field
+                                                    + ". Удалите его из запроса"));
                         if (values.size() != 1)
                             errors.add(
                                     RequestException.detail(
                                             "query",
-                                            key,
+                                            field,
                                             "DUPLICATE_PARAMETER",
-                                            "Pass this parameter once"));
+                                            "Передайте параметр " + field + " только один раз"));
                     });
             if (hire) {
                 if (!params.containsKey("employeeId"))
                     errors.add(
                             RequestException.detail(
-                                    "query", "employeeId", "REQUIRED", "employeeId is required"));
+                                    "query",
+                                    "employeeId",
+                                    "REQUIRED",
+                                    "Передайте обязательный параметр employeeId"));
                 else id(params.getFirst("employeeId"), "query", "employeeId", errors);
             }
             if (request.getEntityStream().read() != -1)
@@ -68,13 +74,26 @@ public class ManagerRequestValidator implements ContainerRequestFilter, Containe
                                 "body",
                                 "$",
                                 "UNEXPECTED_BODY",
-                                "This operation does not accept a body"));
+                                "Эта операция не принимает тело запроса. Передайте данные в параметрах пути или строки запроса"));
             if (!errors.isEmpty())
                 throw new RequestException(
-                        400, "INVALID_REQUEST", "Invalid manager request", errors);
+                        400, "INVALID_REQUEST", validationMessage(errors), errors);
         } catch (RequestException e) {
             request.abortWith(ManagerExceptionMapper.response(e));
         }
+    }
+
+    private static String validationMessage(List<ErrorDetail> errors) {
+        if (errors.size() != 1) return "Неверные параметры запроса";
+        var error = errors.get(0);
+        return switch (error.getCode()) {
+            case "UNKNOWN_FIELD" -> "Неизвестный параметр запроса";
+            case "INVALID_TYPE" -> "Неверный параметр " + error.getField();
+            case "DUPLICATE_PARAMETER" -> "Повторяющийся параметр " + error.getField();
+            case "REQUIRED" -> "Отсутствует обязательный параметр " + error.getField();
+            case "UNEXPECTED_BODY" -> "Операция не принимает тело запроса";
+            default -> "Неверные параметры запроса";
+        };
     }
 
     private static void id(String value, String location, String field, List<ErrorDetail> errors) {
@@ -89,7 +108,9 @@ public class ManagerRequestValidator implements ContainerRequestFilter, Containe
                             location,
                             field,
                             "INVALID_TYPE",
-                            "ID must be an integer from 1 to 9223372036854775807"));
+                            "ID должен быть целым числом от 1 до 9223372036854775807. Значение "
+                                    + value
+                                    + " не подходит"));
         }
     }
 
@@ -113,25 +134,15 @@ public class ManagerRequestValidator implements ContainerRequestFilter, Containe
             throw new RequestException(
                     400,
                     "INVALID_REQUEST",
-                    "Invalid Accept header",
+                    "Неверный заголовок Accept",
                     List.of(
                             RequestException.detail(
                                     "header",
                                     "Accept",
                                     "INVALID_FORMAT",
-                                    "Invalid Accept header")));
+                                    "Укажите корректный заголовок Accept")));
         }
-        if (quality <= 0)
-            throw new RequestException(
-                    406,
-                    "NOT_ACCEPTABLE",
-                    "Allow application/xml responses",
-                    List.of(
-                            RequestException.detail(
-                                    "header",
-                                    "Accept",
-                                    "UNSUPPORTED_MEDIA_TYPE",
-                                    "Allow application/xml responses")));
+        if (quality <= 0) throw RequestException.notAcceptable();
     }
 
     private static String allowedOrigin(ContainerRequestContext request) {

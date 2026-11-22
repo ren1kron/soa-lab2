@@ -69,7 +69,7 @@ public final class CollectionQuery {
             if (av == null || bv == null) {
                 comparison = av == bv ? 0 : av == null ? 1 : -1;
             } else {
-                comparison = compareValue(av, bv, order.field());
+                comparison = compareValues(av, bv);
                 if (order.descending()) comparison = -comparison;
             }
             if (comparison != 0) return comparison;
@@ -86,9 +86,9 @@ public final class CollectionQuery {
         if (operator.equals("startsWith")) return actual.toString().startsWith(expected.toString());
         if (operator.equals("in")) {
             return condition.values().stream()
-                    .anyMatch(value -> compareValue(actual, value, condition.field()) == 0);
+                    .anyMatch(value -> compareFilterValues(actual, value, condition.field()) == 0);
         }
-        int comparison = compareValue(actual, expected, condition.field());
+        int comparison = compareFilterValues(actual, expected, condition.field());
         return switch (operator) {
             case "eq" -> comparison == 0;
             case "ne" -> comparison != 0;
@@ -100,12 +100,16 @@ public final class CollectionQuery {
         };
     }
 
-    private static int compareValue(Object a, Object b, String field) {
+    private static int compareFilterValues(Object a, Object b, String field) {
         if (field.equals("type")) {
             return Integer.compare(
                     OrganizationType.fromValue(a.toString()).ordinal(),
                     OrganizationType.fromValue(b.toString()).ordinal());
         }
+        return compareValues(a, b);
+    }
+
+    private static int compareValues(Object a, Object b) {
         if (a instanceof Number && b instanceof Number) {
             return new BigDecimal(a.toString()).compareTo(new BigDecimal(b.toString()));
         }

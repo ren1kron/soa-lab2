@@ -87,6 +87,8 @@ services:
     entrypoint: ["python", "/tests/acceptance.py"]
     volumes:
       - ./tests:/tests:ro
+      - ./openapi.yaml:/contracts/openapi.yaml:ro
+      - ./openapi-manager.yaml:/contracts/openapi-manager.yaml:ro
       - organizations-tls:/tls/organizations:ro
       - manager-tls:/tls/manager:ro
       - test-state:/state

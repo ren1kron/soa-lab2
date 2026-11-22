@@ -71,6 +71,34 @@ class HttpContractTest {
     }
 
     @Test
+    void reportsUnsupportedFilterOperatorAndUnexpectedBodyTogether() throws Exception {
+        mvc.perform(get("/organizations").param("filter", "name:gt:abc").content("x"))
+                .andExpect(status().isBadRequest())
+                .andExpect(xpath("/error/code").string("INVALID_REQUEST"))
+                .andExpect(
+                        xpath("/error/details/detail[field='filter[0]']/code")
+                                .string("UNKNOWN_OPERATOR"))
+                .andExpect(
+                        xpath("/error/details/detail[field='$']/code").string("UNEXPECTED_BODY"));
+    }
+
+    @Test
+    void reportsTheDocumentedContentEncodingError() throws Exception {
+        mvc.perform(
+                        post("/employees")
+                                .contentType("application/xml")
+                                .header("Content-Encoding", "gzip")
+                                .content("x"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(
+                        xpath("/error/message")
+                                .string("Кодирование тела запроса не поддерживается"))
+                .andExpect(
+                        xpath("/error/details/detail[field='Content-Encoding']/code")
+                                .string("UNSUPPORTED_ENCODING"));
+    }
+
+    @Test
     void enforcesAcceptContentTypeAndContentEncoding() throws Exception {
         mvc.perform(get("/organizations").accept("application/json"))
                 .andExpect(status().isNotAcceptable());
@@ -87,9 +115,44 @@ class HttpContractTest {
     }
 
     @Test
+    void readsAcceptAndContentEncodingAcrossHeaderLines() throws Exception {
+        mvc.perform(get("/organizations").header("Accept", "*/*;q=1", "application/xml;q=0"))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(xpath("/error/details/detail/field").string("Accept"));
+        mvc.perform(
+                        post("/employees")
+                                .contentType("application/xml")
+                                .header("Content-Encoding", "identity", "gzip")
+                                .content("<employee><name>ok</name></employee>"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(xpath("/error/details/detail/code").string("UNSUPPORTED_ENCODING"));
+    }
+
+    @Test
     void preservesRoutingAndMethodErrorsAsClientErrors() throws Exception {
         mvc.perform(get("/unknown")).andExpect(status().isNotFound());
         mvc.perform(get("/organizations/1/unknown")).andExpect(status().isNotFound());
         mvc.perform(patch("/organizations/1")).andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    void returnsTheContractErrorForAnUnexpectedFailure() throws Exception {
+        mvc.perform(get("/organizations/1"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentTypeCompatibleWith("application/xml"))
+                .andExpect(xpath("/error/code").string("INTERNAL_ERROR"))
+                .andExpect(
+                        xpath("/error/message")
+                                .string(
+                                        "Не удалось завершить запрос. Если вы изменяли данные, проверьте, применились ли изменения"))
+                .andExpect(xpath("count(/error/details)").number(1.0))
+                .andExpect(xpath("count(/error/details/*)").number(0.0));
+    }
+
+    @Test
+    void returnsWellFormedXmlWhenAnInvalidParameterContainsAControlCharacter() throws Exception {
+        mvc.perform(get("/organizations").param("bad\u0001", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(xpath("/error/details/detail/field").string("bad�"));
     }
 }

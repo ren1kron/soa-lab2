@@ -59,7 +59,7 @@ public final class HttpsOrganizationsClient implements OrganizationsGateway {
                             .trim();
             if (!contentType.equalsIgnoreCase("application/xml")) throw ServiceException.upstream();
             if (status == expected) return response;
-            throw UpstreamErrorTranslator.translate(status, response.body());
+            throw UpstreamErrorTranslator.translate(status, response.body(), response.headers());
         } catch (HttpTimeoutException e) {
             throw new ServiceException(
                     "UPSTREAM_TIMEOUT",
@@ -172,10 +172,7 @@ public final class HttpsOrganizationsClient implements OrganizationsGateway {
         for (long number = 1; ; number++) {
             var p = page(organizationId, number, 100);
             if (total == null) total = p.total;
-            else if (total != p.total)
-                throw new ServiceException(
-                        "CONCURRENT_MODIFICATION",
-                        "The employee collection changed while taking the acquisition snapshot");
+            else if (total != p.total) throw ServiceException.concurrentModification();
             for (var employee : p.employees)
                 if (!ids.add(employee.getId())) throw ServiceException.upstream();
             if (ids.size() >= total) break;

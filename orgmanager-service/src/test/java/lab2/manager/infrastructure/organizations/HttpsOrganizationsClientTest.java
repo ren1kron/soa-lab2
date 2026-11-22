@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.*;
 import lab2.manager.application.error.ServiceException;
+import lab2.manager.web.error.ManagerExceptionMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,6 +30,7 @@ class HttpsOrganizationsClientTest {
     private long delay;
     private java.util.function.Function<HttpExchange, String> dynamic;
     private final java.util.Map<String, String> headers = new java.util.HashMap<>();
+    private java.util.List<String> retryAfter = java.util.List.of();
 
     @BeforeAll
     static void certificates() throws Exception {
@@ -92,6 +94,8 @@ class HttpsOrganizationsClientTest {
                     String responseBody = dynamic == null ? body : dynamic.apply(exchange);
                     exchange.getResponseHeaders().set("Content-Type", contentType);
                     headers.forEach((key, value) -> exchange.getResponseHeaders().set(key, value));
+                    retryAfter.forEach(
+                            value -> exchange.getResponseHeaders().add("Retry-After", value));
                     if (status == 204) exchange.sendResponseHeaders(status, -1);
                     else {
                         byte[] bytes =
@@ -146,10 +150,11 @@ class HttpsOrganizationsClientTest {
     @Test
     void sendsEscapedEmployeeAssignmentWithFullWidthEmployerId() {
         body =
-                "<employee><id>10</id><name> A &amp; B &lt;team&gt; </name><organizationId>"
+                "<employee><id>10</id><name> A &amp; B &lt;team&gt;&#13;\nend&#13; </name><organizationId>"
                         + Long.MAX_VALUE
                         + "</organizationId></employee>";
-        var employee = new lab2.manager.generated.upstream.model.Employee(10L, " A & B <team> ");
+        var employee =
+                new lab2.manager.generated.upstream.model.Employee(10L, " A & B <team>\r\nend\r ");
         assertEquals(Long.MAX_VALUE, client.assign(employee, Long.MAX_VALUE).getOrganizationId());
         var request =
                 UpstreamXmlReader.document(
@@ -191,19 +196,91 @@ class HttpsOrganizationsClientTest {
     @Test
     void translatesErrorStatusesAndDoesNotRetryMutations() {
         body = "<error><code>VALIDATION_FAILED</code><message>bad</message><details/></error>";
-        status = 422;
-        assertEquals(
-                "INTEGRATION_FAILURE",
-                assertThrows(ServiceException.class, () -> client.organization(1)).code);
+        for (int rejected : new int[] {400, 415, 422}) {
+            status = rejected;
+            assertEquals(
+                    "INTEGRATION_FAILURE",
+                    assertThrows(ServiceException.class, () -> client.organization(1)).code);
+        }
         status = 500;
         assertEquals(
                 "UPSTREAM_INTERNAL_ERROR",
                 assertThrows(ServiceException.class, () -> client.deleteOrganization(1)).code);
-        assertEquals(2, calls.get());
+        assertEquals(4, calls.get());
         status = 409;
         assertEquals(
                 CONFLICT,
                 assertThrows(ServiceException.class, () -> client.deleteOrganization(1)).kind);
+    }
+
+    @Test
+    void preservesValidUpstreamNotFoundAndConflictThroughManagerXml() {
+        body =
+                "<error><code>CUSTOM</code><message> upstream&#13;message </message>"
+                        + "<details><detail><location>body</location><field>name</field><code>CUSTOM_DETAIL</code>"
+                        + "<message> upstream&#13;detail </message></detail></details></error>";
+        for (int upstreamStatus : new int[] {404, 409}) {
+            status = upstreamStatus;
+            var error = assertThrows(ServiceException.class, () -> client.deleteOrganization(1));
+            try (var response = ManagerExceptionMapper.response(error)) {
+                assertEquals(upstreamStatus, response.getStatus());
+                var xml =
+                        UpstreamXmlReader.read(
+                                (byte[]) response.getEntity(),
+                                "error",
+                                lab2.manager.generated.model.Error.class);
+                assertEquals("CUSTOM", xml.getCode());
+                assertEquals(" upstream\rmessage ", xml.getMessage());
+                var detail = xml.getDetails().get(0);
+                assertEquals("body", detail.getLocation().toString());
+                assertEquals("name", detail.getField());
+                assertEquals("CUSTOM_DETAIL", detail.getCode());
+                assertEquals(" upstream\rdetail ", detail.getMessage());
+            }
+        }
+    }
+
+    @Test
+    void forwardsOnlyOneDecimalRetryAfterOnValidUpstream503WithoutRepeatingDelete() {
+        status = 503;
+        body = "<error><code>PRIVATE</code><message>private message</message><details/></error>";
+        for (var values :
+                java.util.List.of(
+                        java.util.List.of("30"),
+                        java.util.List.of("0"),
+                        java.util.List.of("0005"),
+                        java.util.List.of("9223372036854775808"))) {
+            retryAfter = values;
+            assertEquals(values.get(0), managerRetryAfter(503));
+        }
+        for (var values :
+                java.util.List.<java.util.List<String>>of(
+                        java.util.List.of(),
+                        java.util.List.of("-1"),
+                        java.util.List.of("+1"),
+                        java.util.List.of("1.5"),
+                        java.util.List.of("5, 5"),
+                        java.util.List.of("5", "5"),
+                        java.util.List.of("Wed, 21 Oct 2015 07:28:00 GMT"))) {
+            retryAfter = values;
+            assertNull(managerRetryAfter(503));
+        }
+        retryAfter = java.util.List.of("30");
+        status = 504;
+        assertNull(managerRetryAfter(504));
+        status = 503;
+        body = "<wrong/>";
+        assertNull(managerRetryAfter(502));
+    }
+
+    private String managerRetryAfter(int expectedStatus) {
+        int previousCalls = calls.get();
+        var error = assertThrows(ServiceException.class, () -> client.deleteOrganization(1));
+        assertEquals(previousCalls + 1, calls.get());
+        try (var response = ManagerExceptionMapper.response(error)) {
+            assertEquals(expectedStatus, response.getStatus());
+            return response.getHeaderString("Retry-After");
+        }
     }
 
     @Test

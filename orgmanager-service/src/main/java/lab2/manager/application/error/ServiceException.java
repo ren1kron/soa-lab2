@@ -21,16 +21,27 @@ public final class ServiceException extends RuntimeException {
     public final Kind kind;
     public final String code;
     public final List<Detail> details;
+    public final String retryAfterSeconds;
 
     public ServiceException(String code, String message) {
         this(kindFor(code), code, message, List.of());
     }
 
     public ServiceException(Kind kind, String code, String message, List<Detail> details) {
+        this(kind, code, message, details, null);
+    }
+
+    private ServiceException(
+            Kind kind,
+            String code,
+            String message,
+            List<Detail> details,
+            String retryAfterSeconds) {
         super(message);
         this.kind = kind;
         this.code = code;
         this.details = List.copyOf(details);
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 
     private static Kind kindFor(String code) {
@@ -55,5 +66,26 @@ public final class ServiceException extends RuntimeException {
         return new ServiceException(
                 "INVALID_UPSTREAM_RESPONSE",
                 "The first service returned an invalid response; check state before repeating a change");
+    }
+
+    public static ServiceException upstreamUnavailable(String retryAfterSeconds) {
+        return new ServiceException(
+                Kind.SERVICE_UNAVAILABLE,
+                "SERVICE_UNAVAILABLE",
+                "The first service is temporarily unavailable",
+                List.of(),
+                retryAfterSeconds);
+    }
+
+    public static ServiceException concurrentModification() {
+        return new ServiceException(
+                "CONCURRENT_MODIFICATION",
+                "Работодатель сотрудника изменился во время поглощения. Проверьте его текущее назначение");
+    }
+
+    public static ServiceException differentAcquirer() {
+        return new ServiceException(
+                "CONCURRENT_MODIFICATION",
+                "Есть незавершённая операция поглощения с другой поглощающей организацией");
     }
 }

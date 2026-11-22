@@ -14,7 +14,7 @@ public final class AcquireOrganizationService {
     public AcquisitionOutcome acquire(long acquirerId, long sourceId) {
         if (acquirerId == sourceId) {
             throw new ServiceException(
-                    "SELF_ACQUISITION", "Acquirer and acquired organizations must differ");
+                    "SELF_ACQUISITION", "Поглощающая и поглощаемая организации должны различаться");
         }
         try (var lease = journal.lock(acquirerId, sourceId)) {
             var snapshot = lease.load();
@@ -27,14 +27,14 @@ public final class AcquireOrganizationService {
                 lease.save(ids);
                 snapshot = new AcquisitionSnapshot(acquirerId, sourceId, ids);
             } else if (snapshot.acquirerId() != acquirerId) {
-                throw conflict();
+                throw ServiceException.differentAcquirer();
             }
             boolean sourceExists = sourceExists(sourceId);
             for (long id : snapshot.employeeIds()) {
                 Employee employee = savedEmployee(id);
                 if (Objects.equals(employee.getOrganizationId(), acquirerId)) continue;
                 if (!sourceExists || !Objects.equals(employee.getOrganizationId(), sourceId))
-                    throw conflict();
+                    throw ServiceException.concurrentModification();
                 transfer(employee, acquirerId);
             }
             if (sourceExists) organizations.deleteOrganization(sourceId);
@@ -62,7 +62,8 @@ public final class AcquireOrganizationService {
         try {
             return organizations.employee(id);
         } catch (ServiceException error) {
-            if (error.kind == ServiceException.Kind.NOT_FOUND) throw conflict();
+            if (error.kind == ServiceException.Kind.NOT_FOUND)
+                throw ServiceException.concurrentModification();
             throw error;
         }
     }
@@ -75,11 +76,5 @@ public final class AcquireOrganizationService {
             if (error.kind == ServiceException.Kind.NOT_FOUND) savedEmployee(employee.getId());
             throw error;
         }
-    }
-
-    private static ServiceException conflict() {
-        return new ServiceException(
-                "CONCURRENT_MODIFICATION",
-                "A saved employee was removed or reassigned; check current ownership");
     }
 }
