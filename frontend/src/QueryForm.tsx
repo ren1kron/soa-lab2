@@ -73,7 +73,7 @@ export default function QueryForm({entity, query, busy, onApply}: {
     onApply({page: '1', size: '20', sort: 'id', filter: ''});
   }
 
-  return <form onSubmit={event => {
+  return <form className="query-settings" onSubmit={event => {
     event.preventDefault();
     apply();
   }}>
@@ -89,9 +89,9 @@ export default function QueryForm({entity, query, busy, onApply}: {
           <option value="asc">{sort.field === 'type' ? 'По алфавиту (A–Z)' : 'По возрастанию'}</option>
           <option value="desc">{sort.field === 'type' ? 'По алфавиту (Z–A)' : 'По убыванию'}</option>
         </select>
-        <button type="button" disabled={sorts.length === 1}
+        {sorts.length > 1 && <button type="button"
                 onClick={() => setSorts(sorts.filter((_, i) => i !== index))}>Убрать
-        </button>
+        </button>}
       </div>)}
       <button type="button" disabled={sorts.length === sortFields.length} onClick={addSort}>Добавить поле</button>
       <h3>Фильтры</h3>
@@ -132,11 +132,13 @@ export default function QueryForm({entity, query, busy, onApply}: {
       <button type="button"
               onClick={() => setFilters([...filters, {field: 'name', operator: 'contains', value: ''}])}>Добавить фильтр
       </button>
-      <div className="query-row">
+      <div className="page-options">
         <label>Страница<input value={page} required pattern="[0-9]+"
                               onChange={event => setPage(event.target.value)}/></label>
         <label>Записей на странице<input type="number" min="1" max="100" required value={size}
                                          onChange={event => setSize(event.target.value)}/></label>
+      </div>
+      <div className="actions">
         <button type="submit">Применить</button>
         <button type="button" onClick={reset}>Сбросить</button>
       </div>

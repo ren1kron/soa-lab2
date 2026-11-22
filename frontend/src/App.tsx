@@ -1,8 +1,10 @@
 import {useEffect, useId, useRef, useState} from 'react';
 import {
-  ApiError, display, fieldNames, fieldsFor, objectFields, organizationTypes,
+  ApiError, display, organizationTypes, recordFields, recordLabel,
   readRecord, request, text, valueAt, writeXml, type Entity, type XmlRecord
 } from './api';
+import Icon from './Icon';
+import RecordTable from './RecordTable';
 import EntityForm from './EntityForm';
 import QueryForm, {type Query} from './QueryForm';
 
@@ -14,45 +16,9 @@ function ErrorMessage({error}: { error: unknown }) {
   </div>;
 }
 
-function RecordTable({records, entity, busy, editOnDoubleClick, onEdit, onDelete}: {
-  records: XmlRecord[];
-  entity: Entity;
-  busy: boolean;
-  editOnDoubleClick?: boolean;
-  onEdit?: (record: XmlRecord, trigger: HTMLButtonElement) => void;
-  onDelete?: (record: XmlRecord) => void;
-}) {
-  const fields = fieldsFor(entity).filter(field => !objectFields.includes(field));
-  const editRow = editOnDoubleClick && !busy ? onEdit : undefined;
-  return <div className="table-wrap">
-    <table>
-      <thead>
-      <tr>
-        {fields.map(field => <th
-          key={field}>{entity === 'employees' && field === 'name' ? 'Имя' : fieldNames[field]}</th>)}
-        {onEdit && <th>Действия</th>}
-      </tr>
-      </thead>
-      <tbody>
-      {records.length === 0 && <tr>
-          <td colSpan={fields.length + (onEdit ? 1 : 0)}>Записей нет</td>
-      </tr>}
-      {records.map(record => <tr key={valueAt(record, 'id')} className={editRow ? 'editable-row' : undefined}
-                                 onDoubleClick={editRow && (event => {
-                                   if (!(event.target instanceof Element) || event.target.closest('.table-actions')) return;
-                                   const trigger = event.currentTarget.querySelector<HTMLButtonElement>('button[data-edit]');
-                                   if (trigger) editRow(record, trigger);
-                                 })}>
-        {fields.map(field => <td key={field}>{display(record, field)}</td>)}
-        {onEdit && <td className="table-actions">
-            <button data-edit disabled={busy} onClick={event => onEdit(record, event.currentTarget)}>Изменить</button>
-            <button disabled={busy} onClick={() => onDelete?.(record)}>Удалить</button>
-        </td>}
-      </tr>)}
-      </tbody>
-    </table>
-  </div>;
-}
+type RecordView =
+  | {mode: 'info'; record: XmlRecord}
+  | {mode: 'edit'; record: XmlRecord; fromInfo: boolean};
 
 function Collection({entity}: { entity: Entity }) {
   const [records, setRecords] = useState<XmlRecord[]>([]);
@@ -63,13 +29,21 @@ function Collection({entity}: { entity: Entity }) {
   const [error, setError] = useState<unknown>(null);
   const [message, setMessage] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editing, setEditing] = useState<XmlRecord | null>(null);
+  const [view, setView] = useState<RecordView | null>(null);
   const [lookupId, setLookupId] = useState('');
-  const [found, setFound] = useState<XmlRecord | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const editTrigger = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<HTMLElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const lookupInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
-  const editHeadingId = useId();
+  const dialogHeadingId = useId();
+  const [wideLayout, setWideLayout] = useState(() => window.matchMedia('(min-width: 961px)').matches);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 961px)');
+    const adapt = () => setWideLayout(desktop.matches);
+    desktop.addEventListener('change', adapt);
+    return () => desktop.removeEventListener('change', adapt);
+  }, []);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -102,20 +76,18 @@ function Collection({entity}: { entity: Entity }) {
   }, []);
 
   useEffect(() => {
-    if (busy) return;
-    if (editing) {
-      const editor = dialog.current;
-      if (editor && !editor.open) {
-        editor.showModal();
-        editor.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
-      }
-      if (error) editor?.querySelector<HTMLElement>('[role="alert"]')?.focus();
-    } else if (editTrigger.current) {
-      const trigger = editTrigger.current;
-      editTrigger.current = null;
+    const modal = dialog.current;
+    if (view && modal) {
+      if (!modal.open) modal.showModal();
+      if (busy) return;
+      const target = error ? '[role="alert"]' : view.mode === 'info' ? 'h2' : 'input[name="name"]';
+      modal.querySelector<HTMLElement>(target)?.focus();
+    } else if (!busy && returnFocus.current) {
+      const trigger = returnFocus.current;
+      returnFocus.current = null;
       (trigger.isConnected ? trigger : refreshButton.current)?.focus();
     }
-  }, [editing, busy, error]);
+  }, [view, busy, error]);
 
   const pages = loadedQuery ? (BigInt(total) + BigInt(loadedQuery.size) - 1n) / BigInt(loadedQuery.size) : 0n;
 
@@ -128,24 +100,31 @@ function Collection({entity}: { entity: Entity }) {
     if (loadedQuery) applyQuery({...loadedQuery, page: String(BigInt(loadedQuery.page) + offset)});
   }
 
-  function edit(record: XmlRecord, trigger: HTMLButtonElement) {
-    if (busy || editing) return;
-    editTrigger.current = trigger;
+  function info(record: XmlRecord, trigger: HTMLElement) {
+    if (busy) return;
+    returnFocus.current = trigger;
+    setError(null);
+    setView({mode: 'info', record});
+  }
+
+  function edit(record: XmlRecord, trigger?: HTMLButtonElement) {
+    if (busy) return;
+    if (trigger) returnFocus.current = trigger;
     run(async () => {
       const {root} = await request(`/${entity}/${encodeURIComponent(valueAt(record, 'id'))}`);
-      setEditing(readRecord(root!));
+      setView({mode: 'edit', record: readRecord(root!), fromInfo: view?.mode === 'info'});
     });
   }
 
-  function closeEditor() {
-    dialog.current?.close();
-    setEditing(null);
-  }
-
-  function cancelEdit() {
+  function dismiss() {
     if (busy) return;
     setError(null);
-    closeEditor();
+    if (view?.mode === 'edit' && view.fromInfo) {
+      setView({mode: 'info', record: view.record});
+    } else {
+      dialog.current?.close();
+      setView(null);
+    }
   }
 
   async function save(data: XmlRecord, record: XmlRecord | null) {
@@ -153,82 +132,115 @@ function Collection({entity}: { entity: Entity }) {
       const path = record ? `/${entity}/${encodeURIComponent(valueAt(record, 'id'))}` : `/${entity}`;
       const body = writeXml(entity === 'organizations' ? 'organization' : 'employee', data);
       const {root} = await request(path, record ? 'PUT' : 'POST', body);
-      setFound(readRecord(root!));
-      if (record) closeEditor();
-      else setShowCreateForm(false);
+      if (!record) {
+        returnFocus.current = addButton.current;
+        setShowCreateForm(false);
+      }
+      setView({mode: 'info', record: readRecord(root!)});
       setMessage('Запись сохранена');
-      await load(record ? loadedQuery ?? query : query);
+      await load(loadedQuery ?? query);
     });
   }
 
-  function remove(record: XmlRecord) {
+  function remove(record: XmlRecord, trigger?: HTMLButtonElement) {
     if (!window.confirm(`Удалить запись ${valueAt(record, 'name')} с ID ${valueAt(record, 'id')}`)) return;
+    if (trigger) returnFocus.current = trigger;
     run(async () => {
       await request(`/${entity}/${encodeURIComponent(valueAt(record, 'id'))}`, 'DELETE');
-      setFound(null);
+      dialog.current?.close();
+      setView(null);
       setMessage('Запись удалена');
-      await load();
+      await load(loadedQuery ?? query);
     });
   }
 
-  function find() {
-    setFound(null);
+  function find(trigger: HTMLElement | null) {
+    returnFocus.current = trigger;
     run(async () => {
       const {root} = await request(`/${entity}/${encodeURIComponent(lookupId)}`);
-      setFound(readRecord(root!));
+      setView({mode: 'info', record: readRecord(root!)});
     });
   }
 
+  const organization = entity === 'organizations';
   return <>
-    <section>
-      <h2>{entity === 'organizations' ? 'Организации' : 'Сотрудники'}</h2>
-      <QueryForm entity={entity} query={query} busy={busy} onApply={applyQuery}/>
-    </section>
-    {!editing && <ErrorMessage error={error}/>}
-    {message && <p className="success">{message}</p>}
-    {showCreateForm && <section>
+    <div className="page-heading">
+      <h1>{organization ? 'Организации' : 'Сотрудники'}</h1>
+      <button ref={addButton} className="primary" aria-label={organization ? 'Добавить организацию' : 'Добавить сотрудника'}
+              disabled={busy || showCreateForm} onClick={() => setShowCreateForm(true)}>
+        <Icon name="plus"/><span>Добавить<span className="wide-label"> {organization ? 'организацию' : 'сотрудника'}</span></span>
+      </button>
+    </div>
+    {!view && <ErrorMessage error={error}/>}
+    {message && <p className="success" role="status">{message}</p>}
+    {showCreateForm && <section className="panel form-panel">
       <EntityForm entity={entity} initial={null} busy={busy} onSave={data => save(data, null)}
                   onCancel={() => setShowCreateForm(false)}/>
     </section>}
-    {editing && <dialog className="edit-dialog" ref={dialog} aria-labelledby={editHeadingId}
-                        onCancel={event => {
-                          event.preventDefault();
-                          cancelEdit();
-                        }}>
-      <EntityForm entity={entity} initial={editing} busy={busy} headingId={editHeadingId}
-                  onSave={data => save(data, editing)} onCancel={cancelEdit}>
-        <ErrorMessage error={error}/>
-      </EntityForm>
-    </dialog>}
-    <section>
-      <div className="actions">
-        <button disabled={busy} onClick={() => setShowCreateForm(true)}>
-          Добавить {entity === 'organizations' ? 'организацию' : 'сотрудника'}
-        </button>
-        <button ref={refreshButton} disabled={busy} onClick={() => run(() => load())}>Обновить список</button>
-      </div>
-      {busy && <p>Загрузка</p>}
-      {loadedQuery && <>
-          <p>Всего записей {total} страница {loadedQuery.page} из {String(pages || 1n)}</p>
-          <RecordTable records={records} entity={entity} busy={busy} editOnDoubleClick onEdit={edit} onDelete={remove}/>
-          <div className="actions pagination">
-              <button disabled={busy || BigInt(loadedQuery.page) <= 1n} onClick={() => changePage(-1n)}>Назад</button>
-              <button disabled={busy || BigInt(loadedQuery.page) >= pages} onClick={() => changePage(1n)}>Вперед
-              </button>
+    {view && <dialog className="edit-dialog" ref={dialog} aria-labelledby={dialogHeadingId}
+                     onCancel={event => {
+                       event.preventDefault();
+                       dismiss();
+                     }}>
+      {view.mode === 'edit' ?
+        <EntityForm entity={entity} initial={view.record} busy={busy} headingId={dialogHeadingId}
+                    onSave={data => save(data, view.record)} onCancel={dismiss}>
+          <ErrorMessage error={error}/>
+        </EntityForm> : <>
+          <h2 id={dialogHeadingId} tabIndex={-1}>{organization ? 'Информация об организации' : 'Информация о сотруднике'}</h2>
+          <dl className="record-details">
+            {recordFields[entity].map(field => <div key={field}>
+              <dt>{recordLabel(entity, field)}</dt><dd>{display(view.record, field)}</dd>
+            </div>)}
+          </dl>
+          <ErrorMessage error={error}/>
+          <div className="actions">
+            <button className="primary" disabled={busy} onClick={() => edit(view.record)}>Изменить</button>
+            <button className="danger" disabled={busy} onClick={() => remove(view.record)}>Удалить</button>
+            <button disabled={busy} onClick={dismiss}>Закрыть</button>
           </div>
-      </>}
-    </section>
-    <section>
-      <h2>Получить по ID</h2>
-      <form className="query-row" onSubmit={event => {
-        event.preventDefault();
-        find();
-      }}>
-        <label>ID<input required value={lookupId} onChange={event => setLookupId(event.target.value)}/></label>
-        <button disabled={busy}>Найти</button>
-      </form>
-      {found && <RecordTable records={[found]} entity={entity} busy={busy} onEdit={edit} onDelete={remove}/>}
-    </section>
+        </>}
+    </dialog>}
+    <div className="workspace">
+      <aside aria-label="Поиск и параметры списка">
+        <details className="panel side-panel" open={wideLayout}>
+          <summary><Icon name="search"/><span>Поиск по ID</span><Icon name="expand"/></summary>
+          <form className="lookup" onSubmit={event => {
+            event.preventDefault();
+            const submitter = (event.nativeEvent as SubmitEvent).submitter;
+            find(document.activeElement === lookupInput.current ? lookupInput.current : submitter ?? lookupInput.current);
+          }}>
+            <input ref={lookupInput} aria-label="ID записи" placeholder="ID записи" required value={lookupId} inputMode="numeric"
+                   onChange={event => setLookupId(event.target.value)}/>
+            <button disabled={busy}>Найти</button>
+          </form>
+        </details>
+        <details className="panel side-panel" open={wideLayout}>
+          <summary><Icon name="sliders"/><span>Параметры<span className="wide-label"> списка</span></span><Icon name="expand"/></summary>
+          <QueryForm entity={entity} query={query} busy={busy} onApply={applyQuery}/>
+        </details>
+      </aside>
+      <div className="records-column">
+        <section className="panel" aria-busy={busy}>
+          <div className="panel-heading">
+            <h2><Icon name="list"/>Записи {loadedQuery && <span className="count" aria-label={`Всего записей ${total}`}>{total}</span>}</h2>
+            <button className="refresh" ref={refreshButton} disabled={busy} aria-label="Обновить список"
+                    onClick={() => run(() => load())}><Icon name="refresh"/>Обновить</button>
+          </div>
+          {busy && <p className="load-state" role="status">Загрузка…</p>}
+          {loadedQuery ? <>
+            <RecordTable records={records} entity={entity} busy={busy} actions={{info, edit, remove}}/>
+            <div className="pagination">
+              <span>Страница <b>{loadedQuery.page}</b> из {String(pages || 1n)}</span>
+              <div className="actions">
+                <button disabled={busy || BigInt(loadedQuery.page) <= 1n} onClick={() => changePage(-1n)}>Назад</button>
+                <button disabled={busy || BigInt(loadedQuery.page) >= pages} onClick={() => changePage(1n)}>Вперёд</button>
+              </div>
+            </div>
+          </> : !busy && <p className="load-state">Список не загружен</p>}
+        </section>
+      </div>
+    </div>
   </>;
 }
 
@@ -292,14 +304,16 @@ function Operations() {
 
   const typeOptions = organizationTypes.map(type => <option key={type}>{type}</option>);
   return <>
-    <h2>Дополнительные операции и менеджер</h2>
+    <div className="page-heading"><h1>Операции</h1></div>
     <ErrorMessage error={error}/>
-    {message && <p className="success">{message}</p>}
-    {result && <RecordTable entity="organizations" records={[result]} busy={busy}/>}
+    {message && <p className="success" role="status">{message}</p>}
+    {result && <section className="panel result-panel"><h2 className="panel-heading">Результат поглощения</h2>
+      <RecordTable entity="organizations" records={[result]} busy={busy}/></section>}
+    <div className="operations-grid">
     <section>
-      <h3>Подсчет организаций</h3>
-      <p>Порядок типов от меньшего к большему</p>
-      <p>PUBLIC, GOVERNMENT, TRUST, PRIVATE_LIMITED_COMPANY</p>
+      <h2>Подсчет организаций</h2>
+      <p>Типы по возрастанию</p>
+      <ol className="type-order">{organizationTypes.map(type => <li key={type}>{type}</li>)}</ol>
       <form className="query-row" onSubmit={event => {
         event.preventDefault();
         count();
@@ -310,13 +324,13 @@ function Operations() {
       </form>
     </section>
     <section>
-      <h3>Удаление одной организации по типу</h3>
-      <label>Тип<select disabled={busy} value={deleteType}
+      <h2>Удаление одной организации по типу</h2>
+      <div className="query-row"><label>Тип<select disabled={busy} value={deleteType}
                         onChange={event => setDeleteType(event.target.value)}>{typeOptions}</select></label>
-      <button disabled={busy} onClick={removeByType}>Удалить по типу</button>
+      <button className="danger" disabled={busy} onClick={removeByType}>Удалить по типу</button></div>
     </section>
     <section>
-      <h3>Найм сотрудника</h3>
+      <h2>Найм сотрудника</h2>
       <form className="query-row" onSubmit={event => {
         event.preventDefault();
         hire();
@@ -329,9 +343,9 @@ function Operations() {
       </form>
     </section>
     <section>
-      <h3>Поглощение организации</h3>
-      <p>Сотрудники перейдут в первую организацию а вторая будет удалена</p>
-      <p>При ошибке проверьте данные и укажите те же ID для продолжения</p>
+      <h2>Поглощение организации</h2>
+      <p>Сотрудники перейдут в первую организацию, а вторая будет удалена.</p>
+      <p>При ошибке проверьте данные и укажите те же ID для продолжения.</p>
       <form className="query-row" onSubmit={event => {
         event.preventDefault();
         acquire();
@@ -343,23 +357,29 @@ function Operations() {
         <button disabled={busy}>Выполнить поглощение</button>
       </form>
     </section>
-    {busy && <p>Загрузка</p>}
+    </div>
+    {busy && <p role="status">Загрузка…</p>}
   </>;
 }
 
 export default function App() {
   const [tab, setTab] = useState<Entity | 'operations'>('organizations');
-  return <main>
-    <h1>Организации и сотрудники</h1>
-    <nav>
-      <button aria-current={tab === 'organizations' ? 'page' : undefined}
-              onClick={() => setTab('organizations')}>Организации
-      </button>
-      <button aria-current={tab === 'employees' ? 'page' : undefined} onClick={() => setTab('employees')}>Сотрудники
-      </button>
-      <button aria-current={tab === 'operations' ? 'page' : undefined} onClick={() => setTab('operations')}>Операции
-      </button>
-    </nav>
-    {tab === 'operations' ? <Operations/> : <Collection key={tab} entity={tab}/>}
-  </main>;
+  const tabs = {organizations: 'Организации', employees: 'Сотрудники', operations: 'Операции'} as const;
+  return <>
+    <a className="skip-link" href="#content">К содержанию</a>
+    <header className="masthead">
+      <div className="masthead-inner">
+        <div className="brand"><span className="brand-mark" aria-hidden="true"><i/><i/><i/></span>Реестр</div>
+        <nav aria-label="Разделы реестра">
+          {(Object.keys(tabs) as (keyof typeof tabs)[]).map(key =>
+            <button key={key} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>
+              <Icon name={key}/>{tabs[key]}
+            </button>)}
+        </nav>
+      </div>
+    </header>
+    <main id="content" tabIndex={-1}>
+      {tab === 'operations' ? <Operations/> : <Collection key={tab} entity={tab}/>}
+    </main>
+  </>;
 }

@@ -39,6 +39,12 @@ export function writeXml(root: string, data: XmlRecord): string {
 
 export async function request(path: string, method = 'GET', body?: string, manager = false): Promise<Result> {
   const mutation = method !== 'GET';
+  const headers = new Headers({Accept: 'application/xml'});
+  if (body !== undefined) headers.set('Content-Type', 'application/xml');
+  else if (method === 'GET' && path.includes('?')) {
+    // Payara uses the request charset to decode form-encoded query parameters.
+    headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
+  }
   let response: Response;
   try {
     response = await fetch(serviceUrl(path, manager, {
@@ -46,7 +52,7 @@ export async function request(path: string, method = 'GET', body?: string, manag
       manager: import.meta.env.VITE_MANAGER_URL,
     }), {
       method,
-      headers: {Accept: 'application/xml', ...(body === undefined ? {} : {'Content-Type': 'application/xml'})},
+      headers,
       body,
       signal: AbortSignal.timeout(60000),
     });
@@ -101,9 +107,20 @@ export const fieldsFor = (entity: Entity) => entity === 'employees'
   ? ['id', 'name', 'organizationId'] : Object.keys(fieldNames).filter(field => field !== 'organizationId');
 export const objectFields = ['officialAddress', 'officialAddress.town'];
 
+export const recordFields: Record<Entity, string[]> = {
+  organizations: ['id', 'name', 'type', 'employeeCount', 'annualTurnover', 'creationDate',
+    'coordinates.x', 'coordinates.y', 'officialAddress.zipCode', 'officialAddress.town.name',
+    'officialAddress.town.x', 'officialAddress.town.y'],
+  employees: ['id', 'name', 'organizationId'],
+};
+
+export function recordLabel(entity: Entity, field: string): string {
+  return entity === 'employees' && field === 'name' ? 'Имя' : fieldNames[field];
+}
+
 export function display(record: XmlRecord, field: string): string {
   const value = valueAt(record, field);
-  if (!value) return 'Нет';
+  if (!value) return field === 'type' ? 'Не указан' : '—';
   if (field === 'creationDate') return value.split('-').reverse().join('-');
   return value;
 }
