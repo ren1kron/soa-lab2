@@ -1,8 +1,12 @@
 # Native deployment on Helios
 
-This deploys **both APIs and the frontend on Helios**, without Docker, a Linux VM, Node, or administrator access on the server. It targets your confirmed FreeBSD 14.5 amd64 / OpenJDK 17 account, `s409411`, and PostgreSQL `pg:5432/studs`.
+Visitors open **https://se.ifmo.ru/~s409411/soa/**. Helios serves the built React files from `~/public_html/soa/`. A PHP gateway in the same directory sends XML requests over verified HTTPS to Payara (organizations and employees) or WildFly (manager). The Java services and their administration ports stay on loopback. Both services use the account’s personal schema in `pg:5432/studs`.
 
-Payara 6.2025.11 serves the organizations API and the built frontend at `/client/`. WildFly 35.0.1 serves the manager API. PostgreSQL uses your personal schema in the existing database, shared by both services. The manager continues to call the first service through certificate-verified HTTPS.
+This guide targets the native FreeBSD 14.5 / JDK 17 installation. The public web host must execute PHP for `api.php/…` paths, support PHP HTTPS streams (OpenSSL and `allow_url_fopen`), and allow them to reach the Helios IPv4 loopback ports. The public checks in step 7 exercise those requirements. The hosting pattern is also used by the [Helios web gateway](https://github.com/RedGry/helios-container/blob/main/docs/web.md).
+
+The application has no login. Publishing the gateway lets anyone with access to the site create, edit and delete records and run manager operations. Use demo data for a public deployment. For restricted use, have the web host enforce access on the whole `/~s409411/soa/` path, including `api.php`.
+
+**Already running the tunnel-based release?** Follow [the one-time migration](#migrate-the-previous-frontend-war-installation) after building and uploading the new archive. Your existing database, keys and runtime installations can be reused.
 
 ## 1. Prepare the application on your computer
 
@@ -20,16 +24,16 @@ To compile the Java services using the pinned Gradle Docker image on your comput
 sh scripts/build-helios.sh --docker
 ```
 
-The script runs the bundle/helper tests, rebuilds both independent services with `clean build` (including JUnit and Spotless), installs frontend dependencies from the lockfile, runs frontend tests, builds the static client, and writes:
+The script runs the bundle/helper tests, rebuilds both independent services with `clean build` (including JUnit and Spotless), installs frontend dependencies from the lockfile, runs frontend tests and builds the static client. The output includes
 
-- `artifacts/helios/soa-lab2-native.tgz` — all three WARs, public deployment helpers, and this guide.
+- `artifacts/helios/soa-lab2-native.tgz` — the two API WARs, the standalone client in `artifacts/frontend/`, the PHP gateway template, deployment helpers and this guide.
 - `artifacts/helios/SHA256SUMS` — the project bundle's SHA-256.
 - `artifacts/helios/manifest.json` — build time, source state, successful commands, and bundle metadata.
 - `artifacts/helios/README-FIRST.md` — installation/update instructions.
 
-It packages the frontend for `/client/`, with browser-visible API origins `https://localhost:36125` and `https://localhost:36126`. It includes current workspace changes, including uncommitted files. A failed build leaves the last completed bundle in place. PostgreSQL integration/acceptance checks remain a separate `sh scripts/test.sh` run.
+The gateway integration test runs when PHP CLI and OpenSSL are available on the build computer. It exercises the published PHP file against two HTTPS test services. The Helios build uses relative asset and API paths. The same bundle can be published under another Helios login. A failed build leaves the previous bundle in place. To run the separate PostgreSQL integration and acceptance checks, use `sh scripts/test.sh`.
 
-The builder does **not download, rebuild, or change Payara/WildFly distributions**. Existing server ZIPs in the output directory are preserved. After the initial server installation, copy only the new `soa-lab2-native.tgz` to Helios for project updates. The archive contains no passwords, generated certificates, runtimes, or build caches.
+Payara and WildFly distributions are installed once. After the initial installation, transfer just the new project bundle. Keep that archive and the installation directory outside `public_html`.
 
 ## 2. Download and transfer the server distributions once
 
@@ -57,7 +61,9 @@ For manual SFTP transfer, upload those three files into `~/soa/soa-lab2` on Heli
 ssh -p 2222 s409411@se.ifmo.ru
 ```
 
-Stop the existing VM if it is running, to release its memory:
+The Helios commands below use POSIX shell syntax. If your login shell is `csh` or `tcsh`, enter `sh` first.
+
+If you previously used a Helios container VM solely for this application, you can stop it to release memory:
 
 ```sh
 helios-container stop
@@ -91,7 +97,7 @@ The defaults are:
 
 | Purpose | Helios loopback port |
 | --- | --- |
-| Organizations API and frontend | 26125, HTTPS |
+| Organizations and employees API | 26125, HTTPS |
 | Manager API | 26126, HTTPS |
 | Payara administration | 26124 |
 | WildFly administration | 26129 |
@@ -130,7 +136,7 @@ curl --cacert tls/organizations/server.crt \
   'https://localhost:26125/organizations?size=1'
 ```
 
-The first command starts the domain in the background and deploys `organizations.war` at `/` plus `client.war` at `/client/`. The API should return XML. Flyway applies the existing V1 migration in your schema and records it in `organizations_schema_history`.
+The first command starts the domain in the background and deploys `organizations.war` at `/`. The API should return XML. Flyway applies the existing V1 migration in your schema and records it in `organizations_schema_history`.
 
 Start the manager and keep its output in a log:
 
@@ -148,53 +154,67 @@ curl -i --cacert tls/manager/server.crt -X POST \
 
 Expect `400` with an XML validation error. The zero IDs intentionally test the manager without modifying data. Look for `ROOT.war.failed` and the accompanying log if deployment fails. The two services share a schema but must keep different `FLYWAY_HISTORY_TABLE` values; start them through `run.sh`, which sets these.
 
-## 7. Open the frontend from your computer
+## 7. Publish and verify the public link
 
-Run in a separate terminal **on your computer** and leave it open:
+On Helios, in `~/soa/soa-lab2/soa-lab2-native`, run:
 
 ```sh
-ssh -p 2222 -N -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:36125:127.0.0.1:26125 \
-  -L 127.0.0.1:36126:127.0.0.1:26126 \
-  s409411@se.ifmo.ru
+sh deploy/helios/run.sh publish
 ```
 
-No `helios-container forward` command is involved. SSH connects directly to the native server ports and preserves end-to-end HTTPS.
+This installs `index.html`, hashed JS/CSS assets, `api.php`, and **only the two public service certificates** in `~/public_html/soa/`. The gateway uses the ports from `helios.env` and verifies each upstream certificate and hostname. The database credentials, private keys, WARs and administration tools stay in the private installation. The publisher creates the site directory and installs publicly readable site files. If `~/public_html/soa` already contains a different site, move that site to a location of your choice before publishing.
 
-First visit both addresses in your browser and accept/trust their respective self-signed certificates:
+Close any visitor SSH tunnels. From your computer, run:
 
-1. `https://localhost:36125/organizations?size=1`
-2. `https://localhost:36126/` — a `404` after certificate acceptance is expected here.
+```sh
+site='https://se.ifmo.ru/~s409411/soa'
+curl -fsS "$site/"                           # HTML referencing ./assets/…
+curl -si "$site/api.php/organizations/organizations?size=1"
+curl -si -X POST "$site/api.php/manager/orgmanager/hire/0?employeeId=0"
+```
 
-Then open **https://localhost:36125/client/**. The frontend assets and both APIs now run on Helios; your computer only supplies the browser and SSH tunnel. No frontend development server is required.
+Expect `200` with XML and an `X-Total-Count` header for the collection, then `400` with an XML validation error for the zero IDs. These checks leave the database untouched. Open **https://se.ifmo.ru/~s409411/soa/** in the browser and switch between the organization and employee lists. Visitors use the university’s public HTTPS certificate.
 
-The manager allows CORS from `https://localhost:36125`, as configured in `helios.env`. The frontend must use the **local tunnel ports** 36125/36126, whereas the manager-to-organizations call uses the **Helios port** 26125. Changing the browser ports requires rebuilding the static client with matching `VITE_*_URL` values and updating `CORS_ORIGINS`.
+| Symptom | What to check |
+| --- | --- |
+| The page or its JS/CSS returns 403 | Check traversal permissions on your home directory and read/traversal permissions on `public_html` and `soa`. Compare with a working public page in your account. |
+| The page loads, but the API returns PHP source, an HTML error, or a hosting-level 404/405 | Check the full `api.php/…` URL, PHP execution, path-info handling and permitted methods with the hosting administrator. Static file hosting alone cannot relay API requests. |
+| The gateway returns XML with `502 PROXY_ERROR` | Check both local HTTPS commands in step 6. Republish after changing ports or service certificates. If both local checks pass, verify that hosted PHP can open HTTPS streams to those ports from its network environment. |
+| The gateway is unavailable on your hosting configuration | Ask the hosting administrator to route `/~s409411/soa/api.php/organizations/` to `https://127.0.0.1:26125/` and `/~s409411/soa/api.php/manager/` to `https://127.0.0.1:26126/` on the service host. Strip each prefix, preserve methods, bodies, query strings, status and pagination headers, and verify TLS with the corresponding public certificates. The frontend uses these same paths. |
 
-## Shutdown, updates, and diagnosis
+## Migrate the previous frontend WAR installation
 
-Stop both servers on Helios:
+Build and upload the new archive as in the update commands below. On Helios, install the **new updater first**. The older updater expects `client.war` and will reject this bundle.
 
 ```sh
 cd ~/soa/soa-lab2/soa-lab2-native
-sh deploy/helios/run.sh stop
+tar -xOf ../soa-lab2-native.tgz deploy/helios/run.sh > deploy/helios/run.sh.new && \
+  mv deploy/helios/run.sh.new deploy/helios/run.sh
+sh deploy/helios/run.sh update ../soa-lab2-native.tgz
 ```
 
-This preserves the database objects, applications, configuration, and certificates. Do not rerun certificate/configuration setup against running servers.
+During startup the new helper undeploys the old `client` application if Payara still lists it. The update installs both API WARs and publishes the new site using your existing `helios.env` and service certificates. Complete the public checks in step 7.
 
-To update the project, rebuild and upload only the bundle, then run `update` on Helios. This also covers frontend changes, because the client is part of the bundle:
+## Shutdown, updates, and diagnosis
+
+For subsequent updates, run on your computer:
 
 ```sh
-# On your computer
 sh scripts/build-helios.sh
 scp -P 2222 artifacts/helios/soa-lab2-native.tgz s409411@se.ifmo.ru:soa/soa-lab2/
+```
 
-# On Helios
+Then run on Helios:
+
+```sh
 cd ~/soa/soa-lab2/soa-lab2-native
 sh deploy/helios/run.sh update ../soa-lab2-native.tgz
 tail -f logs/manager-console.log
 ```
 
-`update` checks the bundle before stopping anything, then stops both servers, replaces `artifacts/`, `deploy/helios/`, and this guide, and starts both servers again. It does not touch `runtimes/`, `domains/`, `tls/`, `private/`, `logs/`, or `helios.env`, and it refuses a bundle containing files for any of them. Never delete the installation directory to update it. If an installation's `run.sh` has no `update` command yet, follow the first-update steps in `README-FIRST.md` once. If `update` reports that server configuration changed, run `stop`, then `configure`, then start both services as in step 6.
+The updater checks the bundle, restarts the two services and republishes the site. Once WildFly deploys `ROOT.war`, repeat the public checks. If publication fails, fix the reported problem and rerun `sh deploy/helios/run.sh publish` independently. If the updater reports a server configuration change, stop both services, rerun `configure`, start the services as in step 6 and republish.
+
+To stop the APIs on Helios, run `sh deploy/helios/run.sh stop`. Static files remain visible until you move the published `soa` directory outside `public_html`.
 
 Useful diagnostics:
 
@@ -207,6 +227,6 @@ sockstat -4 -l -u "$USER"
 
 `rss` is resident memory in KiB. If a log reports `OutOfMemoryError: Metaspace`, increase that server's metaspace ceiling; increasing `-Xmx` does not increase metaspace. If it reports `Java heap space`, increase that server's heap. Payara's settings are in `domains/organizations/config/domain.xml`; WildFly's are in `deploy/helios/run.sh`. Stop the affected server before changing them. A bare `Killed` without a JVM error can indicate an external account/process limit; collect the logs and memory readings before increasing allocations.
 
-For a port collision, stop the servers, choose free ports in `helios.env`, rerun `configure`, and update the remote ends of the SSH forwarding command. Browser ports may remain 36125/36126. For a storage quota error, inspect the space used by the old container VM and runtime archives; do not erase a VM containing data you still need.
+For a port collision, stop the servers, choose free ports in `helios.env`, rerun `configure`, start the services and rerun `publish` to update the gateway. For a storage quota error, inspect the space used by the old container VM and runtime archives; do not erase a VM containing data you still need.
 
 This guide does not import data from the earlier container databases. It creates fresh tables in your schema on the university database; retain the old deployment until any needed data has been exported.

@@ -1,36 +1,13 @@
 # SOA Lab 2 in Postman
 
-Import [the collection](Lab2.postman_collection.json) and [the Helios environment](Helios.postman_environment.json) into Postman Desktop. Select **Helios** in the environment picker. The requests use the native Helios deployment through the two local ports below.
+Import [the collection](Lab2.postman_collection.json) and [the Helios environment](Helios.postman_environment.json) into Postman Desktop. Select **Helios** in the environment picker. The requests use the public HTTPS gateway. Postman verifies the university certificate using its usual trust settings.
 
 | Variable | Default |
 | --- | --- |
-| `organizations_base_url` | `https://localhost:36125` |
-| `manager_base_url` | `https://localhost:36126` |
+| `organizations_base_url` | `https://se.ifmo.ru/~s409411/soa/api.php/organizations` |
+| `manager_base_url` | `https://se.ifmo.ru/~s409411/soa/api.php/manager` |
 
-## Open the tunnel and trust the servers
-
-Keep the SSH tunnel open in a separate terminal. If your existing tunnel already exposes these ports, reuse it.
-
-```sh
-ssh -p 2222 -N -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:36125:127.0.0.1:26125 \
-  -L 127.0.0.1:36126:127.0.0.1:26126 \
-  s409411@se.ifmo.ru
-```
-
-Copy the two public server certificates from the Helios installation and join them into a PEM bundle on your computer.
-
-```sh
-mkdir -p .local/postman
-scp -P 2222 s409411@se.ifmo.ru:soa/soa-lab2/soa-lab2-native/tls/organizations/server.crt \
-  .local/postman/helios-organizations.crt
-scp -P 2222 s409411@se.ifmo.ru:soa/soa-lab2/soa-lab2-native/tls/manager/server.crt \
-  .local/postman/helios-manager.crt
-cat .local/postman/helios-organizations.crt .local/postman/helios-manager.crt \
-  > .local/postman/helios.pem
-```
-
-In **Settings → App settings → Certificates**, enable **CA certificates** and select the PEM file. Keep SSL certificate verification enabled. If you already use a custom CA bundle in Postman, combine its contents and the Helios certificates in a separate PEM file. [Postman certificate settings](https://learning.postman.com/docs/use/send-requests/authorization/certificates)
+If you imported the older environment, update both active values in Postman. Substitute your own login when using another account. Public deployment and gateway checks are in the [native Helios guide](../docs/helios-native.md).
 
 ## Present the backend
 

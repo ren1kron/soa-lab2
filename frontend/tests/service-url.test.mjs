@@ -15,6 +15,17 @@ test('uses separate browser-visible HTTPS origins for static deployment', () => 
     'https://localhost:36126/orgmanager/hire/1?employeeId=2');
 });
 
+test('Helios resolves both APIs beside the public page, even with local origin overrides', () => {
+  const site = 'https://se.ifmo.ru/~s409411/soa/';
+  const origins = {helios: true, organizations: 'https://localhost:36125', manager: 'https://localhost:36126'};
+  for (const [path, manager, prefix] of [
+    ['/employees?sort=name&sort=id', false, 'organizations'],
+    ['/orgmanager/acquise/9223372036854775807/1', true, 'manager'],
+  ]) {
+    assert.equal(new URL(serviceUrl(path, manager, origins), site).href, site + 'api.php/' + prefix + path);
+  }
+});
+
 test('rejects non-HTTPS or non-origin configuration', () => {
   for (const organizations of ['http://localhost:26125', '/api', 'https://user:secret@localhost',
     'https://localhost/path', 'https://localhost?x=1', 'https://localhost/#x']) {

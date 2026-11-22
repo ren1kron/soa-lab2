@@ -9,9 +9,9 @@ Two independent Java 17 services implementing the existing XML OpenAPI contracts
 
 The React + TypeScript + Vite client is in [`frontend/`](frontend/). The required route spelling is `/orgmanager/acquise/{acquirerId}/{acquiredId}`.
 
-For deployment directly on Helios without Docker or Node on the server, follow the [native Helios guide](docs/helios-native.md). Payara serves the organizations API and a static frontend WAR; WildFly serves the manager API, and both use the university PostgreSQL server.
+On native Helios, the public frontend lives in `~/public_html/soa/`. Its PHP gateway calls the Payara and WildFly APIs over verified loopback HTTPS. After deployment, open [the public application](https://se.ifmo.ru/~s409411/soa/).
 
-Rebuild the Helios project bundle with `sh scripts/build-helios.sh` (JDK 17, Node 24+, npm, Python 3). Use `--docker` to compile the Java services with the pinned local Gradle image. Outputs are in `artifacts/helios/`; subsequent deployments need only the refreshed `soa-lab2-native.tgz`, applied on Helios with `sh deploy/helios/run.sh update ../soa-lab2-native.tgz`. Payara and WildFly distributions are installed once and are preserved by both commands.
+Build the bundle with `sh scripts/build-helios.sh` using JDK 17, Node 24+, npm and Python 3. Pass `--docker` to compile the Java services with the pinned Gradle image. Upload `artifacts/helios/soa-lab2-native.tgz` for each release. See the [native installation guide](docs/helios-native.md) or the [one-time migration from the frontend WAR](docs/helios-native.md#migrate-the-previous-frontend-war-installation).
 
 ## Run with Docker
 

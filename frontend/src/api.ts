@@ -47,7 +47,7 @@ export async function request(path: string, method = 'GET', body?: string, manag
   }
   let response: Response;
   try {
-    response = await fetch(serviceUrl(path, manager, {
+    response = await fetch(serviceUrl(path, manager, import.meta.env.MODE === 'helios' ? {helios: true} : {
       organizations: import.meta.env.VITE_ORGANIZATIONS_URL,
       manager: import.meta.env.VITE_MANAGER_URL,
     }), {

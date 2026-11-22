@@ -12,8 +12,8 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 JAVA = str(Path(os.environ['JAVA_HOME'], 'bin/java')) if os.getenv('JAVA_HOME') else 'java'
 CONFIGURATOR = ROOT / 'deploy/helios/ConfigurePayara.java'
-WARS = ('organizations.war', 'orgmanager.war', 'client.war')
-COMMANDS = ('--command=:shutdown', 'stop-domain', 'start-domain', 'deploy')
+WARS = ('organizations.war', 'orgmanager.war')
+COMMANDS = ('--command=:shutdown', 'stop-domain', 'start-domain', 'deploy', 'list-applications', 'undeploy')
 
 DOMAIN = '''<domain>
 <hazelcast-runtime-configuration/>
@@ -177,9 +177,14 @@ class NativeUpdate(unittest.TestCase):
         (self.app / 'artifacts').mkdir()
         for war in WARS:
             (self.app / 'artifacts' / war).write_text('old ' + war)
+        self.home = self.base / 'account'
+        self.home.mkdir()
+        (self.app / 'artifacts/client.war').write_text('old client')
         self.preserved = {'helios.env': (ROOT / 'deploy/helios/helios.env.example').read_text(),
                           'domains/organizations/config/domain.xml': 'domain',
                           'tls/organizations/server.p12': 'key',
+                          'tls/organizations/server.crt': 'public Payara cert',
+                          'tls/manager/server.crt': 'public WildFly cert',
                           'logs/old.log': 'log'}
         for name, content in self.preserved.items():
             path = self.app / name
@@ -192,6 +197,10 @@ class NativeUpdate(unittest.TestCase):
         files['deploy/helios/run.sh'] = (ROOT / 'deploy/helios/run.sh').read_text() + '# new version\n'
         files['deploy/helios/ConfigurePayara.java'] = (ROOT / 'deploy/helios/ConfigurePayara.java').read_text()
         files['deploy/helios/wildfly.cli'] = wildfly_cli or (ROOT / 'deploy/helios/wildfly.cli').read_text()
+        for name in ('api.php', 'publish.sh', 'check-schema.sql', 'helios.env.example'):
+            files['deploy/helios/' + name] = (ROOT / 'deploy/helios' / name).read_text()
+        files['artifacts/frontend/index.html'] = '<script src="./assets/app-1.js"></script>'
+        files['artifacts/frontend/assets/app-1.js'] = 'frontend'
         files.update(extra)
         source = self.base / 'source'
         path = self.base / 'soa-lab2-native.tgz'
@@ -206,6 +215,7 @@ class NativeUpdate(unittest.TestCase):
 
     def update(self, *args):
         env = {k: v for k, v in os.environ.items() if k != 'SOA_HOME'}
+        env['HOME'] = str(self.home)
         return subprocess.run(['sh', str(self.run_sh), 'update', *map(str, args)],
                               env=env, capture_output=True, text=True, timeout=60)
 
@@ -226,7 +236,12 @@ class NativeUpdate(unittest.TestCase):
 
     def test_replaces_project_files_keeps_server_state_and_restarts(self):
         payara = self.app / 'runtimes/payara6/bin/asadmin'
+        with payara.open('a') as script:
+            script.write('case "$*" in *list-applications*) echo "client  <web>" ;; esac\n')
         launcher = payara.read_text()
+        public = self.home / 'public_html'
+        public.mkdir()
+        (public / 'index.html').write_text('another project')
         old_script = self.run_sh.stat().st_ino
         result = self.update(self.bundle())
         self.assertEqual(0, result.returncode, result.stderr)
@@ -243,9 +258,39 @@ class NativeUpdate(unittest.TestCase):
         order = [line.split()[0] + ' ' + next((word for word in line.split()[1:] if word in COMMANDS), '')
                  for line in self.logged().splitlines()]
         self.assertEqual(['jboss-cli --command=:shutdown', 'asadmin stop-domain', 'asadmin start-domain', 'asadmin deploy',
-                          'asadmin deploy', 'standalone '], order)
+                          'asadmin list-applications', 'asadmin undeploy', 'standalone '], order)
+        self.assertIn('undeploy client', self.logged())
+        self.assertFalse((self.app / 'artifacts/client.war').exists())
+        self.assertEqual('another project', (public / 'index.html').read_text())
+        site = public / 'soa'
+        self.assertEqual({'.soa-lab2', 'index.html', 'assets', 'api.php', 'organizations.crt', 'manager.crt'},
+                         {path.name for path in site.iterdir()})
+        self.assertEqual('public Payara cert', (site / 'organizations.crt').read_text())
+        self.assertEqual('public WildFly cert', (site / 'manager.crt').read_text())
+        self.assertEqual('frontend', (site / 'assets/app-1.js').read_text())
+        self.assertIn("'26126' : '26125'", (site / 'api.php').read_text())
+        self.assertEqual(0o644, (site / 'index.html').stat().st_mode & 0o777)
+        self.assertEqual(0o755, (site / 'assets').stat().st_mode & 0o777)
         self.assertEqual([], list(self.app.glob('.update.*')))
         self.assertNotIn('configure', result.stdout)
+
+    def test_republish_preserves_other_sites_and_recovers_without_a_restart(self):
+        site = self.home / 'public_html/soa'
+        site.mkdir(parents=True)
+        (site / 'index.html').write_text('existing site')
+        result = self.update(self.bundle())
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Refusing to overwrite', result.stderr)
+        self.assertEqual('existing site', (site / 'index.html').read_text())
+        self.assertFalse((site / 'api.php').exists())
+        site.rename(self.home / 'previous-site')
+        self.wait_for_manager()
+        calls = self.logged()
+        for _ in range(2):
+            subprocess.run(['sh', str(self.run_sh), 'publish'], check=True, capture_output=True,
+                           env=dict(os.environ, SOA_HOME=str(self.app), HOME=str(self.home)))
+            self.assertEqual('frontend', (site / 'assets/app-1.js').read_text())
+        self.assertEqual(calls, self.logged())
 
     def test_rejects_a_bundle_that_would_touch_server_state(self):
         old_script = self.run_sh.read_text()
@@ -258,13 +303,15 @@ class NativeUpdate(unittest.TestCase):
 
     def test_rejects_incomplete_corrupt_or_missing_bundles_before_stopping(self):
         old_script = self.run_sh.read_text()
-        incomplete = self.bundle(without={'artifacts/client.war'})
+        incomplete = self.bundle(without={'artifacts/frontend/index.html'})
         corrupt = self.base / 'corrupt.tgz'
         corrupt.write_bytes(b'not an archive')
         for bundle in (incomplete, corrupt, self.base / 'missing.tgz'):
             self.assertNotEqual(0, self.update(bundle).returncode, bundle)
             self.assert_nothing_changed(old_script)
         self.assertNotEqual(0, self.update().returncode)
+        self.assert_nothing_changed(old_script)
+        self.assertNotEqual(0, self.update(self.bundle(without={'artifacts/frontend/assets/app-1.js'})).returncode)
         self.assert_nothing_changed(old_script)
 
     def test_continues_when_servers_are_already_stopped(self):
@@ -275,7 +322,7 @@ class NativeUpdate(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.wait_for_manager()
         self.assertIn('start-domain', self.logged())
-        self.assertEqual('new client.war', (self.app / 'artifacts/client.war').read_text())
+        self.assertTrue((self.home / 'public_html/soa/index.html').is_file())
 
     def test_manager_start_clears_stale_deployment_markers(self):
         # WildFly aborts its boot when .failed from an earlier deployment is beside .dodeploy.

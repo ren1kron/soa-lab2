@@ -50,7 +50,7 @@ case "${1:-}" in
         case "$DATABASE_PASSWORD:$PAYARA_ADMIN_PASSWORD" in
             *REPLACE_WITH*) echo 'Fill in both passwords in helios.env first.' >&2; exit 1 ;;
         esac
-        for artifact in organizations.war orgmanager.war client.war; do
+        for artifact in organizations.war orgmanager.war; do
             test -f "$SOA_HOME/artifacts/$artifact" || { echo "Missing artifacts/$artifact" >&2; exit 1; }
         done
         test -x "$PAYARA_HOME/bin/asadmin"
@@ -85,7 +85,11 @@ case "${1:-}" in
         export DATABASE_URL FLYWAY_HISTORY_TABLE
         asadmin start-domain --domaindir "$domains" --timeout 600 organizations
         asadmin deploy --force=true --name organizations "$SOA_HOME/artifacts/organizations.war"
-        asadmin deploy --force=true --name client --contextroot client "$SOA_HOME/artifacts/client.war"
+        # Earlier native installations registered a separate /client application in this domain.
+        applications=$(asadmin list-applications --type web)
+        if printf '%s\n' "$applications" | grep -Eq '^client[[:space:]]+<'; then
+            asadmin undeploy client
+        fi
         ;;
     manager)
         DATABASE_URL="jdbc:postgresql://$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME?currentSchema=$DATABASE_USER&connectTimeout=10"
@@ -99,6 +103,9 @@ case "${1:-}" in
         cp "$SOA_HOME/artifacts/orgmanager.war" "$WILDFLY_HOME/standalone/deployments/ROOT.war"
         touch "$WILDFLY_HOME/standalone/deployments/ROOT.war.dodeploy"
         exec "$WILDFLY_HOME/bin/standalone.sh" -b 127.0.0.1 -bmanagement 127.0.0.1
+        ;;
+    publish)
+        sh "$script_dir/publish.sh"
         ;;
     stop)
         result=0
@@ -116,29 +123,46 @@ case "${1:-}" in
         trap 'rm -rf "$staging"' EXIT
         # Everything is checked here, while the current version keeps running.
         tar -xf "$bundle" -C "$staging"
-        for required in artifacts/organizations.war artifacts/orgmanager.war artifacts/client.war deploy/helios/run.sh; do
-            if [ ! -s "$staging/$required" ]; then
+        required_files='artifacts/organizations.war artifacts/orgmanager.war artifacts/frontend/index.html helios-native.md'
+        for helper in run.sh publish.sh api.php wildfly.cli ConfigurePayara.java check-schema.sql helios.env.example; do
+            required_files="$required_files deploy/helios/$helper"
+        done
+        for required in $required_files; do
+            if [ ! -f "$staging/$required" ] || [ ! -s "$staging/$required" ]; then
                 echo "Not a Helios bundle, missing $required; build it with scripts/build-helios.sh" >&2
                 exit 1
             fi
         done
-        foreign=$(cd "$staging" && find . ! -type d | grep -Ev '^\./(artifacts/|deploy/helios/|helios-native\.md$)' || true)
+        expected=$(printf './%s\n' $required_files)
+        foreign=$(cd "$staging"
+            find . ! -type d ! -type f
+            find . -type f | grep -Fvx "$expected" | grep -Ev '^\./artifacts/frontend/assets/[A-Za-z0-9_-][A-Za-z0-9_.-]*$' || true)
         if [ -n "$foreign" ]; then
             printf 'Refusing a bundle with files outside the project:\n%s\n' "$foreign" >&2
             exit 1
         fi
+        frontend="$staging/artifacts/frontend"
+        assets=$(grep -Eo '\./assets/[A-Za-z0-9_.-]+' "$frontend/index.html") || { echo 'Missing frontend asset references' >&2; exit 1; }
+        for asset in $assets; do
+            [ -s "$frontend/$asset" ] || { echo "Missing frontend asset: $asset" >&2; exit 1; }
+        done
         reconfigure=
         for helper in ConfigurePayara.java wildfly.cli; do
             cmp -s "$staging/deploy/helios/$helper" "$script_dir/$helper" || reconfigure=1
         done
         sh "$script_dir/run.sh" stop || echo 'Continuing: a server that was not running cannot be stopped.'
-        # Renaming gives new inodes, so the shell reading this script is not disturbed.
-        (cd "$staging" && find . ! -type d) | while IFS= read -r file; do
-            mkdir -p "$(dirname "$SOA_HOME/$file")"
-            mv -f "$staging/$file" "$SOA_HOME/$file" || exit 1
-        done
+        if [ -d "$SOA_HOME/artifacts/frontend" ]; then mv "$SOA_HOME/artifacts/frontend" "$staging/previous-frontend"; fi
+        if ! mv "$frontend" "$SOA_HOME/artifacts/frontend"; then
+            if [ -d "$staging/previous-frontend" ]; then mv "$staging/previous-frontend" "$SOA_HOME/artifacts/frontend"; fi
+            exit 1
+        fi
+        mv -f "$staging/artifacts/"*.war "$SOA_HOME/artifacts/"
+        mv -f "$staging/deploy/helios/"* "$script_dir/"
+        mv -f "$staging/helios-native.md" "$SOA_HOME/"
         sh "$script_dir/run.sh" organizations
+        rm -f "$SOA_HOME/artifacts/client.war"
         nohup sh "$script_dir/run.sh" manager > "$SOA_HOME/logs/manager-console.log" 2>&1 < /dev/null &
+        sh "$script_dir/run.sh" publish
         echo "Updated. Follow the manager's startup with: tail -f $SOA_HOME/logs/manager-console.log"
         if [ -n "$reconfigure" ]; then
             echo 'Server configuration changed in this bundle. Apply it with: run.sh stop, run.sh configure, then start both services.'
@@ -146,7 +170,7 @@ case "${1:-}" in
         exit 0
         ;;
     *)
-        echo "Usage: sh deploy/helios/run.sh {configure|organizations|manager|stop|update BUNDLE}" >&2
+        echo "Usage: sh deploy/helios/run.sh {configure|organizations|manager|publish|stop|update BUNDLE}" >&2
         exit 1
         ;;
 esac

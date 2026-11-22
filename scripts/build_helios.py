@@ -15,9 +15,8 @@ import zipfile
 
 DEPLOYMENT_FILES = (
     'ConfigurePayara.java', 'helios.env.example', 'run.sh', 'check-schema.sql', 'wildfly.cli',
+    'api.php', 'publish.sh',
 )
-ORGANIZATIONS_URL = 'https://localhost:36125'
-MANAGER_URL = 'https://localhost:36126'
 
 
 def checksum(path):
@@ -49,8 +48,8 @@ def package_project(root, frontend, output, verification):
             if bad:
                 raise ValueError(f'Corrupt WAR entry: {path}: {bad}')
     index = frontend / 'index.html'
-    if not index.is_file() or '/client/assets/' not in index.read_text():
-        raise ValueError('Build the frontend with --base=/client/ before packaging')
+    if not index.is_file() or './assets/' not in index.read_text() or not any((frontend / 'assets').glob('*.js')):
+        raise ValueError('Build the Helios frontend with --base=./ before packaging')
     helpers = root / 'deploy/helios'
     inputs = [helpers / name for name in DEPLOYMENT_FILES]
     inputs += [helpers / 'README-FIRST.md', root / 'docs/helios-native.md']
@@ -66,11 +65,8 @@ def package_project(root, frontend, output, verification):
         (project / 'deploy/helios').mkdir(parents=True)
         for name, path in wars.items():
             shutil.copyfile(path, project / 'artifacts' / name)
-        with zipfile.ZipFile(project / 'artifacts/client.war', 'w', zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\r\n\r\n')
-            for path in sorted(frontend.rglob('*')):
-                if path.is_file():
-                    archive.write(path, path.relative_to(frontend).as_posix())
+        shutil.copytree(frontend / 'assets', project / 'artifacts/frontend/assets')
+        shutil.copyfile(index, project / 'artifacts/frontend/index.html')
         for name in DEPLOYMENT_FILES:
             shutil.copyfile(helpers / name, project / 'deploy/helios' / name)
         shutil.copyfile(root / 'docs/helios-native.md', project / 'helios-native.md')
@@ -86,8 +82,8 @@ def package_project(root, frontend, output, verification):
             'built_at_utc': datetime.now(timezone.utc).isoformat(),
             'source_commit': git_value(root, 'rev-parse', 'HEAD'),
             'working_tree_has_changes': bool(dirty) if dirty is not None else None,
-            'frontend': {'context_path': '/client/', 'organizations_url': ORGANIZATIONS_URL,
-                         'manager_url': MANAGER_URL},
+            'frontend': {'files': 'artifacts/frontend', 'publish_to': '~/public_html/soa/',
+                         'organizations_url': './api.php/organizations', 'manager_url': './api.php/manager'},
             'verification': verification,
             'files': [{'file': bundle.name, 'bytes': bundle.stat().st_size, 'sha256': digest}],
             'server_distributions': 'Installed once; this command does not download or modify them.',
@@ -150,9 +146,8 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='frontend-', dir=cache) as directory:
         frontend = Path(directory) / 'dist'
-        client_env = dict(env, VITE_ORGANIZATIONS_URL=ORGANIZATIONS_URL, VITE_MANAGER_URL=MANAGER_URL)
-        run(['npm', 'run', 'build', '--', '--base=/client/', f'--outDir={frontend}', '--emptyOutDir'],
-            root / 'frontend', client_env)
+        run(['npm', 'run', 'build', '--', '--mode=helios', '--base=./', f'--outDir={frontend}', '--emptyOutDir'],
+            root / 'frontend')
         package_project(root, frontend, root / 'artifacts/helios',
                         {'commands_passed': passed, 'postgresql_integration_tests': 'Run separately with scripts/test.sh'})
 

@@ -1,7 +1,6 @@
 """Project bundle checks without Java/Node builds or PostgreSQL."""
 import hashlib
 import importlib.util
-import io
 import json
 from pathlib import Path
 import tarfile
@@ -24,7 +23,7 @@ class HeliosProjectBundle(unittest.TestCase):
         self.output.mkdir(parents=True)
         self.frontend = self.root / 'built-client'
         (self.frontend / 'assets').mkdir(parents=True)
-        (self.frontend / 'index.html').write_text('<script src="/client/assets/app.js"></script>')
+        (self.frontend / 'index.html').write_text('<script src="./assets/app.js"></script>')
         (self.frontend / 'assets/app.js').write_text('current frontend')
         for service, war in [('organizations-service', 'organizations.war'),
                              ('orgmanager-service', 'orgmanager.war')]:
@@ -50,14 +49,13 @@ class HeliosProjectBundle(unittest.TestCase):
         with tarfile.open(self.output / 'soa-lab2-native.tgz') as archive:
             names = set(archive.getnames())
             expected = {'artifacts/organizations.war', 'artifacts/orgmanager.war',
-                        'artifacts/client.war', 'helios-native.md',
+                        'artifacts/frontend/index.html', 'artifacts/frontend/assets/app.js', 'helios-native.md',
+                        'deploy/helios/api.php', 'deploy/helios/publish.sh',
                         'deploy/helios/ConfigurePayara.java', 'deploy/helios/helios.env.example',
                         'deploy/helios/run.sh', 'deploy/helios/check-schema.sql', 'deploy/helios/wildfly.cli'}
             self.assertEqual(expected, names)
             self.assertEqual(b'Full deployment guide', archive.extractfile('helios-native.md').read())
-            client = archive.extractfile('artifacts/client.war').read()
-            with zipfile.ZipFile(io.BytesIO(client)) as war:
-                self.assertEqual(b'current frontend', war.read('assets/app.js'))
+            self.assertEqual(b'current frontend', archive.extractfile('artifacts/frontend/assets/app.js').read())
         checksum = hashlib.sha256((self.output / 'soa-lab2-native.tgz').read_bytes()).hexdigest()
         self.assertEqual(f'{checksum}  soa-lab2-native.tgz\n', (self.output / 'SHA256SUMS').read_text())
         manifest = json.loads((self.output / 'manifest.json').read_text())
@@ -75,8 +73,7 @@ class HeliosProjectBundle(unittest.TestCase):
         self.package()
         self.assertNotEqual(before, (self.output / 'soa-lab2-native.tgz').read_bytes())
         with tarfile.open(self.output / 'soa-lab2-native.tgz') as archive:
-            with zipfile.ZipFile(io.BytesIO(archive.extractfile('artifacts/client.war').read())) as client:
-                self.assertEqual(b'changed frontend', client.read('assets/app.js'))
+            self.assertEqual(b'changed frontend', archive.extractfile('artifacts/frontend/assets/app.js').read())
         self.assertEqual(b'existing one-time distribution', runtime.read_bytes())
         self.assertEqual(original_mtime, runtime.stat().st_mtime_ns)
 
